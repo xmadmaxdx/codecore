@@ -41,7 +41,6 @@ covered by the verification below; it does not imply production hardening.
 | Dart SDK | FFI loader, documents, editing, tokens, completion, diagnostics, folding, find, proposals, ghost text, snapshots, change listener |
 | JNI bridge | Compiled; Java harness covers the Kotlin-visible surface |
 | Kotlin SDK | Sources include selection, cursor, language switching, change listeners, proposals, ghost text and snapshots |
-| Flutter Android plugin | `sdk/flutter/android` builds `libcodecore.so` from the shared native sources |
 
 ## Verification performed
 

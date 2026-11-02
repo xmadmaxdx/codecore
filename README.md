@@ -43,7 +43,7 @@ Implemented and tested:
 | Ghost-text state, partial acceptance, dismissal | Implemented, tested |
 | Dart FFI SDK | Implemented, tested |
 | Kotlin JNI bridge | Compiled and exercised through a Java harness |
-| Flutter Android plugin build | Added; builds the same native sources |
+| Flutter Android plugin build | Added; builds the same native sources; not built inside a Flutter app here |
 
 Not implemented yet — see [docs/status.md](docs/status.md):
 
