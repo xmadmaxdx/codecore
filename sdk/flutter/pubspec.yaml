@@ -1,0 +1,11 @@
+name: codecore
+description: Dart SDK for CodeCore, an embeddable code editor engine.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+# CodeCore v0.1 deliberately has no Dart package dependencies. Native memory is
+# allocated through the C ABI (cc_alloc/cc_free), so callers do not need
+# package:ffi or a platform plugin.
