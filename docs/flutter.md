@@ -1,6 +1,6 @@
 # Dart / Flutter SDK
 
-Package: `sdk/flutter`, name `codecore`, version `0.1.0`.
+Package: `sdk/flutter`, name `codecore`, version `0.2.0`.
 
 This is a pure Dart FFI package. It contains no Flutter widgets yet; the editor
 widget layer is a later milestone. It can be used from Flutter or from a Dart

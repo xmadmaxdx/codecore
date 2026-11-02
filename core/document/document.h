@@ -8,121 +8,21 @@
 #include <string_view>
 #include <vector>
 
+#include "core/analysis/analysis.h"
+#include "core/document/line_index.h"
+#include "core/document/types.h"
 #include "core/language/language.h"
+#include "core/snapshot/snapshot.h"
 #include "core/text_buffer/text_buffer.h"
 
 namespace codecore {
 
-enum class Status : int32_t {
-  Ok = 0,
-  InvalidArgument = 1,
-  OutOfRange = 2,
-  ReadOnly = 3,
-  UnknownLanguage = 4,
-  OutOfMemory = 5,
-  Unsupported = 6,
-  InternalError = 7,
-};
-
-enum class ChangeKind : uint32_t {
-  SetText = 0,
-  Insert = 1,
-  Erase = 2,
-  Replace = 3,
-  Undo = 4,
-  Redo = 5,
-};
-
-enum class CursorMove : uint32_t {
-  Left = 0,
-  Right = 1,
-  WordLeft = 2,
-  WordRight = 3,
-  LineStart = 4,
-  LineEnd = 5,
-  Up = 6,
-  Down = 7,
-  DocumentStart = 8,
-  DocumentEnd = 9,
-};
-
-enum class CompletionKind : uint32_t {
-  Keyword = 0,
-  Symbol = 1,
-  Function = 2,
-  Class = 3,
-  Type = 4,
-  Builtin = 5,
-  Property = 6,
-};
-
-struct LineInfo {
-  size_t start = 0;
-  size_t contentEnd = 0;
-  size_t end = 0;
-};
-
-struct Position {
-  uint32_t line = 0;
-  uint32_t column = 0;
-};
-
-struct Selection {
-  uint32_t anchor = 0;
-  uint32_t focus = 0;
-};
-
-struct CompletionItem {
-  std::string label;
-  std::string insertText;
-  std::string detail;
-  CompletionKind kind = CompletionKind::Symbol;
-  int32_t score = 0;
-};
-
-struct Diagnostic {
-  uint32_t start = 0;
-  uint32_t end = 0;
-  uint32_t severity = 1;
-  std::string message;
-  std::string source;
-};
-
-struct FoldingRange {
-  uint32_t startLine = 0;
-  uint32_t endLine = 0;
-  uint32_t kind = 0;
-};
-
-struct SearchOptions {
-  bool caseSensitive = false;
-  bool wholeWord = false;
-};
-
-struct Range {
-  uint32_t start = 0;
-  uint32_t end = 0;
-};
-
-struct DocumentOptions {
-  int32_t languageId = 0;
-  uint32_t tabSize = 4;
-  bool insertSpaces = true;
-  bool readOnly = false;
-};
-
-struct ChangeEvent {
-  uint64_t version = 0;
-  uint32_t kind = 0;
-  uint32_t start = 0;
-  uint32_t removedLength = 0;
-  uint32_t insertedLength = 0;
-};
-
-using ChangeListener = void (*)(void* userData, const ChangeEvent* event);
-
 /*
  * A document owns its text, undo history, selection and language services.
+ *
+ * Line starts are maintained incrementally. Language analysis is computed once
+ * per version and cached in an immutable Analysis object; snapshots copy the
+ * text and provide independent analysis caches for worker threads.
  *
  * All public methods serialize on an internal recursive mutex. Change listeners
  * run on the mutating thread while the document is locked; listeners must not
@@ -179,6 +79,9 @@ class Document {
   std::vector<FoldingRange> foldingRanges() const;
   std::vector<Range> find(std::string_view query, const SearchOptions& options) const;
 
+  /* Captures text, language and version for lock-free analysis elsewhere. */
+  std::shared_ptr<Snapshot> createSnapshot() const;
+
   void setChangeListener(ChangeListener listener, void* userData);
   const char* lastError() const;
 
@@ -193,11 +96,8 @@ class Document {
   Status succeed() const;
   void emitChange(ChangeKind kind, size_t start, size_t removed, size_t inserted);
   void recordEdit(size_t offset, std::string removed, std::string inserted, bool coalesce);
-  void invalidateLines() const;
-  void ensureLines() const;
-  size_t lineOfOffset(size_t offset) const;
-  std::string allText() const;
-  LexResult lexAll() const;
+  const std::string& currentText() const;
+  std::shared_ptr<Analysis> currentAnalysis() const;
 
   std::shared_ptr<const Language> language_;
   TextBuffer buffer_;
@@ -205,8 +105,12 @@ class Document {
   size_t maxDocumentBytes_ = 0;
   mutable std::recursive_mutex mutex_;
 
-  mutable std::vector<LineInfo> lines_;
-  mutable bool linesDirty_ = true;
+  mutable std::string textCache_;
+  mutable bool textDirty_ = false;
+  LineIndex lineIndex_;
+  mutable std::shared_ptr<Analysis> analysis_;
+  mutable uint64_t analysisVersion_ = 0;
+  mutable int32_t analysisLanguageId_ = -1;
 
   uint64_t version_ = 0;
   Selection selection_;

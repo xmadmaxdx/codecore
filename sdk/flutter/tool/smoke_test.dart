@@ -31,8 +31,8 @@ void main() {
   CodeCore? core;
   try {
     core = CodeCore.open();
-    check(core.version == '0.1.0', 'native version is 0.1.0');
-    check(core.abiVersion == 1, 'C ABI version is 1');
+    check(core.version == '0.2.0', 'native version is 0.2.0');
+    check(core.abiVersion == 2, 'C ABI version is 2');
     check(core.languageCount == 23, 'language registry has 23 languages');
     check(
       core.languages.any((language) => language.idString == 'python'),

@@ -2,8 +2,8 @@
 
 Header: `native/include/codecore/codecore.h`
 
-The ABI is versioned with `cc_abi_version()` (currently `1`) and
-`cc_version_string()` (`0.1.0`).
+The ABI is versioned with `cc_abi_version()` (currently `2`) and
+`cc_version_string()` (`0.2.0`).
 
 ## Lifecycle
 

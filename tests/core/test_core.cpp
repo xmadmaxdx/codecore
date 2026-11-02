@@ -1,8 +1,11 @@
 #include "codecore/codecore.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -87,7 +90,7 @@ cc_document* makeDocument(cc_engine* engine, int32_t languageId = 0) {
 void testVersionAndLanguages(cc_engine* engine) {
   CHECK(cc_abi_version() == CODECORE_ABI_VERSION);
   CHECK(cc_version_string() != nullptr);
-  CHECK(std::strcmp(cc_version_string(), "0.1.0") == 0);
+  CHECK(std::strcmp(cc_version_string(), "0.2.0") == 0);
   CHECK(cc_engine_language_count(engine) == 23);
   CHECK(cc_engine_find_language(engine, "python") == 0);
   CHECK(cc_engine_find_language(engine, "kotlin") == 1);
@@ -493,6 +496,175 @@ void testChangeEvents(cc_engine* engine) {
   cc_document_destroy(document);
 }
 
+void testSnapshots(cc_engine* engine) {
+  cc_document* document = makeDocument(engine, 3);
+  const std::string source =
+      "function add(a, b) {\n    const sum = a + b;\n    return sum;\n}\n";
+  CHECK(cc_document_set_text(document, source.data(), source.size()) == CC_STATUS_OK);
+  const uint64_t version = cc_document_version(document);
+
+  cc_snapshot* snapshot = cc_document_create_snapshot(document);
+  CHECK(snapshot != nullptr);
+  CHECK(cc_snapshot_version(snapshot) == version);
+  CHECK(cc_snapshot_length(snapshot) == source.size());
+  CHECK(cc_snapshot_language(snapshot) == 3);
+
+  size_t textLength = 0;
+  char* snapshotText = cc_snapshot_get_text(snapshot, &textLength);
+  CHECK(textLength == source.size());
+  CHECK(std::string(snapshotText ? snapshotText : "", textLength) == source);
+  cc_string_free(snapshotText);
+
+  CHECK(cc_document_insert(document, 0, "# edited\n", 9) == CC_STATUS_OK);
+  CHECK(cc_document_length(document) == source.size() + 9);
+  CHECK(cc_snapshot_length(snapshot) == source.size());
+  CHECK(cc_snapshot_version(snapshot) == version);
+
+  cc_token* tokens = nullptr;
+  const size_t tokenCount = cc_snapshot_tokenize(snapshot, 0, cc_snapshot_length(snapshot), &tokens);
+  CHECK(tokenCount > 0);
+  CHECK(tokens != nullptr);
+  cc_tokens_free(tokens);
+
+  cc_completion_item* items = nullptr;
+  const size_t completionCount =
+      cc_snapshot_complete(snapshot, cc_snapshot_length(snapshot), &items);
+  CHECK(completionCount > 0);
+  cc_completions_free(items, completionCount);
+
+  cc_diagnostic* diagnostics = nullptr;
+  const size_t diagnosticCount = cc_snapshot_diagnose(snapshot, &diagnostics);
+  CHECK(diagnosticCount == 0);
+  cc_diagnostics_free(diagnostics, diagnosticCount);
+
+  cc_folding_range* folds = nullptr;
+  const size_t foldCount = cc_snapshot_folding_ranges(snapshot, &folds);
+  cc_folding_ranges_free(folds);
+  CHECK(foldCount >= 1);
+
+  const std::string needle = "return";
+  cc_range* ranges = nullptr;
+  cc_search_options options{};
+  options.struct_size = sizeof(cc_search_options);
+  const size_t matchCount =
+      cc_snapshot_find(snapshot, needle.data(), needle.size(), &options, &ranges);
+  CHECK(matchCount == 1);
+  CHECK(ranges != nullptr && ranges[0].start == static_cast<uint32_t>(source.find("return")));
+  cc_search_ranges_free(ranges);
+
+  // A snapshot must stay valid after the document that produced it is gone.
+  cc_document_destroy(document);
+  cc_snapshot* survivor = snapshot;
+  snapshotText = cc_snapshot_get_text(survivor, &textLength);
+  CHECK(std::string(snapshotText ? snapshotText : "", textLength) == source);
+  cc_string_free(snapshotText);
+  cc_snapshot_destroy(survivor);
+}
+
+uint32_t nextRandom(uint32_t* state) {
+  *state ^= *state << 13;
+  *state ^= *state >> 17;
+  *state ^= *state << 5;
+  return *state;
+}
+
+std::vector<std::pair<size_t, size_t>> naiveLines(const std::string& text) {
+  std::vector<std::pair<size_t, size_t>> lines;
+  size_t start = 0;
+  while (true) {
+    const size_t newline = text.find('\n', start);
+    if (newline == std::string::npos) {
+      lines.emplace_back(start, text.size());
+      break;
+    }
+    lines.emplace_back(start, newline + 1);
+    start = newline + 1;
+  }
+  return lines;
+}
+
+void testLineIndexFuzz(cc_engine* engine) {
+  cc_document* document = makeDocument(engine, 0);
+  std::string expected;
+  uint32_t state = 0x9e3779b9u;
+  const std::string inserts[] = {"a", "bc", "\n", "\n\n", "xyz\nq", "\r\n"};
+
+  for (int iteration = 0; iteration < 250; ++iteration) {
+    const uint32_t choice = nextRandom(&state) % 3;
+    const size_t length = expected.size();
+    if (choice == 0 || length == 0) {
+      const size_t offset = length == 0 ? 0 : nextRandom(&state) % (length + 1);
+      const std::string& chunk = inserts[nextRandom(&state) % 6];
+      CHECK(cc_document_insert(document, offset, chunk.data(), chunk.size()) == CC_STATUS_OK);
+      expected.insert(offset, chunk);
+    } else if (choice == 1) {
+      const size_t offset = nextRandom(&state) % length;
+      const size_t maxLength = std::min<size_t>(length - offset, 6);
+      const size_t count = 1 + (nextRandom(&state) % maxLength);
+      CHECK(cc_document_erase(document, offset, offset + count) == CC_STATUS_OK);
+      expected.erase(offset, count);
+    } else {
+      const size_t start = nextRandom(&state) % length;
+      const size_t maxEnd = std::min<size_t>(length, start + 8);
+      const size_t end = start + (nextRandom(&state) % (maxEnd - start + 1));
+      const std::string& chunk = inserts[nextRandom(&state) % 6];
+      CHECK(cc_document_replace(document, start, end, chunk.data(), chunk.size()) ==
+            CC_STATUS_OK);
+      expected.replace(start, end - start, chunk);
+    }
+
+    CHECK(documentText(document) == expected);
+    const std::vector<std::pair<size_t, size_t>> lines = naiveLines(expected);
+    CHECK(cc_document_line_count(document) == lines.size());
+    if (cc_document_line_count(document) != lines.size()) {
+      break;
+    }
+    for (size_t index = 0; index < lines.size(); ++index) {
+      cc_line_info info{};
+      CHECK(cc_document_line_at(document, index, &info) == CC_STATUS_OK);
+      const size_t lineStart = lines[index].first;
+      const size_t lineEnd = lines[index].second;
+      size_t contentEnd = lineEnd;
+      if (contentEnd > lineStart && expected[contentEnd - 1] == '\n') {
+        --contentEnd;
+        if (contentEnd > lineStart && expected[contentEnd - 1] == '\r') {
+          --contentEnd;
+        }
+      }
+      if (info.start != lineStart || info.end != lineEnd) {
+        CHECK(info.start == lineStart);
+        CHECK(info.end == lineEnd);
+        break;
+      }
+      if (info.content_end != contentEnd) {
+        CHECK(info.content_end == contentEnd);
+        break;
+      }
+    }
+
+    if (iteration % 10 == 0) {
+      for (size_t offset = 0; offset <= expected.size(); ++offset) {
+        // Columns address line content; offsets inside a CR/LF terminator are
+        // intentionally clamped to the line end by position_to_offset.
+        if (offset < expected.size() &&
+            (expected[offset] == '\n' || expected[offset] == '\r')) {
+          continue;
+        }
+        cc_position position{};
+        CHECK(cc_document_offset_to_position(document, offset, &position) == CC_STATUS_OK);
+        size_t roundTrip = 0;
+        CHECK(cc_document_position_to_offset(document, position.line, position.column,
+                                            &roundTrip) == CC_STATUS_OK);
+        if (roundTrip != offset) {
+          CHECK(roundTrip == offset);
+          break;
+        }
+      }
+    }
+  }
+  cc_document_destroy(document);
+}
+
 void testAllLanguages(cc_engine* engine) {
   for (size_t index = 0; index < cc_engine_language_count(engine); ++index) {
     const cc_language_info* info = cc_engine_language_at(engine, index);
@@ -568,6 +740,8 @@ int main() {
   testSearch(engine);
   testBrackets(engine);
   testChangeEvents(engine);
+  testSnapshots(engine);
+  testLineIndexFuzz(engine);
   testAllLanguages(engine);
   testLargeDocument(engine);
 

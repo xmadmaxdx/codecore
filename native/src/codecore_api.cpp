@@ -24,6 +24,10 @@ struct cc_document {
   void* user_data = nullptr;
 };
 
+struct cc_snapshot {
+  std::shared_ptr<codecore::Snapshot> snapshot;
+};
+
 namespace {
 
 char* duplicateString(const std::string& value) {
@@ -49,6 +53,95 @@ const codecore::Language* findLanguage(
   return nullptr;
 }
 
+cc_token* allocateTokens(const std::vector<codecore::Token>& tokens) {
+  if (tokens.empty()) {
+    return nullptr;
+  }
+  auto* output = static_cast<cc_token*>(cc_alloc(tokens.size() * sizeof(cc_token)));
+  if (!output) {
+    return nullptr;
+  }
+  for (size_t index = 0; index < tokens.size(); ++index) {
+    output[index].start = tokens[index].start;
+    output[index].end = tokens[index].end;
+    output[index].kind = static_cast<uint32_t>(tokens[index].kind);
+  }
+  return output;
+}
+
+cc_completion_item* allocateCompletions(const std::vector<codecore::CompletionItem>& items) {
+  if (items.empty()) {
+    return nullptr;
+  }
+  auto* output = static_cast<cc_completion_item*>(
+      cc_alloc(items.size() * sizeof(cc_completion_item)));
+  if (!output) {
+    return nullptr;
+  }
+  for (size_t index = 0; index < items.size(); ++index) {
+    output[index].label = duplicateString(items[index].label);
+    output[index].insert_text = duplicateString(items[index].insertText);
+    output[index].detail = duplicateString(items[index].detail);
+    output[index].kind = static_cast<uint32_t>(items[index].kind);
+    output[index].score = items[index].score;
+    if (!output[index].label || !output[index].insert_text || !output[index].detail) {
+      return output;
+    }
+  }
+  return output;
+}
+
+cc_diagnostic* allocateDiagnostics(const std::vector<codecore::Diagnostic>& diagnostics) {
+  if (diagnostics.empty()) {
+    return nullptr;
+  }
+  auto* output = static_cast<cc_diagnostic*>(
+      cc_alloc(diagnostics.size() * sizeof(cc_diagnostic)));
+  if (!output) {
+    return nullptr;
+  }
+  for (size_t index = 0; index < diagnostics.size(); ++index) {
+    output[index].start = diagnostics[index].start;
+    output[index].end = diagnostics[index].end;
+    output[index].severity = diagnostics[index].severity;
+    output[index].message = duplicateString(diagnostics[index].message);
+    output[index].source = duplicateString(diagnostics[index].source);
+  }
+  return output;
+}
+
+cc_folding_range* allocateFoldingRanges(const std::vector<codecore::FoldingRange>& ranges) {
+  if (ranges.empty()) {
+    return nullptr;
+  }
+  auto* output = static_cast<cc_folding_range*>(
+      cc_alloc(ranges.size() * sizeof(cc_folding_range)));
+  if (!output) {
+    return nullptr;
+  }
+  for (size_t index = 0; index < ranges.size(); ++index) {
+    output[index].start_line = ranges[index].startLine;
+    output[index].end_line = ranges[index].endLine;
+    output[index].kind = ranges[index].kind;
+  }
+  return output;
+}
+
+cc_range* allocateRanges(const std::vector<codecore::Range>& ranges) {
+  if (ranges.empty()) {
+    return nullptr;
+  }
+  auto* output = static_cast<cc_range*>(cc_alloc(ranges.size() * sizeof(cc_range)));
+  if (!output) {
+    return nullptr;
+  }
+  for (size_t index = 0; index < ranges.size(); ++index) {
+    output[index].start = ranges[index].start;
+    output[index].end = ranges[index].end;
+  }
+  return output;
+}
+
 void documentChangeThunk(void* user_data, const codecore::ChangeEvent* event) {
   auto* wrapper = static_cast<cc_document*>(user_data);
   if (!wrapper || !wrapper->listener) {
@@ -69,7 +162,7 @@ extern "C" {
 
 uint32_t cc_abi_version(void) { return CODECORE_ABI_VERSION; }
 
-const char* cc_version_string(void) { return "0.1.0"; }
+const char* cc_version_string(void) { return "0.2.0"; }
 
 void* cc_alloc(size_t size) { return std::malloc(size == 0 ? 1 : size); }
 
@@ -581,6 +674,128 @@ size_t cc_document_find(const cc_document* document, const char* query, size_t q
 }
 
 void cc_search_ranges_free(cc_range* ranges) { cc_free(ranges); }
+
+cc_snapshot* cc_document_create_snapshot(const cc_document* document) {
+  if (!document || !document->document) {
+    return nullptr;
+  }
+  auto snapshot = document->document->createSnapshot();
+  if (!snapshot) {
+    return nullptr;
+  }
+  auto* wrapper = new (std::nothrow) cc_snapshot();
+  if (!wrapper) {
+    return nullptr;
+  }
+  wrapper->snapshot = std::move(snapshot);
+  return wrapper;
+}
+
+void cc_snapshot_destroy(cc_snapshot* snapshot) {
+  delete snapshot;
+}
+
+uint64_t cc_snapshot_version(const cc_snapshot* snapshot) {
+  return snapshot && snapshot->snapshot ? snapshot->snapshot->version() : 0;
+}
+
+size_t cc_snapshot_length(const cc_snapshot* snapshot) {
+  return snapshot && snapshot->snapshot ? snapshot->snapshot->length() : 0;
+}
+
+int32_t cc_snapshot_language(const cc_snapshot* snapshot) {
+  return snapshot && snapshot->snapshot ? snapshot->snapshot->languageId() : -1;
+}
+
+char* cc_snapshot_get_text(const cc_snapshot* snapshot, size_t* out_length) {
+  if (out_length) {
+    *out_length = 0;
+  }
+  if (!snapshot || !snapshot->snapshot) {
+    return nullptr;
+  }
+  const std::string& text = snapshot->snapshot->text();
+  char* copy = static_cast<char*>(cc_alloc(text.size() + 1));
+  if (!copy) {
+    return nullptr;
+  }
+  std::memcpy(copy, text.data(), text.size());
+  copy[text.size()] = '\0';
+  if (out_length) {
+    *out_length = text.size();
+  }
+  return copy;
+}
+
+size_t cc_snapshot_tokenize(const cc_snapshot* snapshot, size_t start, size_t end,
+                            cc_token** out_tokens) {
+  if (out_tokens) {
+    *out_tokens = nullptr;
+  }
+  if (!snapshot || !snapshot->snapshot || !out_tokens) {
+    return 0;
+  }
+  const std::vector<codecore::Token> tokens = snapshot->snapshot->tokenize(start, end);
+  *out_tokens = allocateTokens(tokens);
+  return tokens.size();
+}
+
+size_t cc_snapshot_complete(const cc_snapshot* snapshot, size_t offset,
+                            cc_completion_item** out_items) {
+  if (out_items) {
+    *out_items = nullptr;
+  }
+  if (!snapshot || !snapshot->snapshot || !out_items) {
+    return 0;
+  }
+  const std::vector<codecore::CompletionItem> items = snapshot->snapshot->complete(offset);
+  *out_items = allocateCompletions(items);
+  return items.size();
+}
+
+size_t cc_snapshot_diagnose(const cc_snapshot* snapshot, cc_diagnostic** out_diagnostics) {
+  if (out_diagnostics) {
+    *out_diagnostics = nullptr;
+  }
+  if (!snapshot || !snapshot->snapshot || !out_diagnostics) {
+    return 0;
+  }
+  const std::vector<codecore::Diagnostic> diagnostics = snapshot->snapshot->diagnose();
+  *out_diagnostics = allocateDiagnostics(diagnostics);
+  return diagnostics.size();
+}
+
+size_t cc_snapshot_folding_ranges(const cc_snapshot* snapshot,
+                                  cc_folding_range** out_ranges) {
+  if (out_ranges) {
+    *out_ranges = nullptr;
+  }
+  if (!snapshot || !snapshot->snapshot || !out_ranges) {
+    return 0;
+  }
+  const std::vector<codecore::FoldingRange> ranges = snapshot->snapshot->foldingRanges();
+  *out_ranges = allocateFoldingRanges(ranges);
+  return ranges.size();
+}
+
+size_t cc_snapshot_find(const cc_snapshot* snapshot, const char* query, size_t query_length,
+                        const cc_search_options* options, cc_range** out_ranges) {
+  if (out_ranges) {
+    *out_ranges = nullptr;
+  }
+  if (!snapshot || !snapshot->snapshot || !query || !out_ranges) {
+    return 0;
+  }
+  codecore::SearchOptions searchOptions;
+  if (options) {
+    searchOptions.caseSensitive = options->case_sensitive != 0;
+    searchOptions.wholeWord = options->whole_word != 0;
+  }
+  const std::vector<codecore::Range> ranges =
+      snapshot->snapshot->find(std::string_view(query, query_length), searchOptions);
+  *out_ranges = allocateRanges(ranges);
+  return ranges.size();
+}
 
 void cc_document_set_change_listener(cc_document* document, cc_change_listener listener,
                                      void* user_data) {

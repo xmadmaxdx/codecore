@@ -3,36 +3,13 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
-#include <cstring>
 #include <limits>
-#include <unordered_map>
 #include <utility>
 
 namespace codecore {
 namespace {
 
-constexpr size_t kNoOffset = std::numeric_limits<size_t>::max();
-
 bool isContinuation(unsigned char c) { return (c & 0xC0u) == 0x80u; }
-
-char asciiLower(char c) {
-  if (c >= 'A' && c <= 'Z') {
-    return static_cast<char>(c - 'A' + 'a');
-  }
-  return c;
-}
-
-std::string asciiLowerCopy(std::string_view text) {
-  std::string lower(text);
-  std::transform(lower.begin(), lower.end(), lower.begin(), asciiLower);
-  return lower;
-}
-
-bool isWordByte(unsigned char c) {
-  return std::isalnum(c) != 0 || c == '_' || c == '$';
-}
-
-bool isIdentifierByte(unsigned char c) { return isWordByte(c); }
 
 size_t nextCodepointOffset(const std::string& text, size_t offset) {
   if (offset >= text.size()) {
@@ -56,10 +33,11 @@ size_t previousCodepointOffset(const std::string& text, size_t offset) {
   return previous;
 }
 
-size_t codepointCount(const std::string& text) {
+size_t codepointCount(const std::string& text, size_t start, size_t end) {
   size_t count = 0;
-  for (size_t index = 0; index < text.size();) {
-    index = nextCodepointOffset(text, index);
+  size_t offset = start;
+  while (offset < end) {
+    offset = nextCodepointOffset(text, offset);
     ++count;
   }
   return count;
@@ -96,54 +74,8 @@ bool isValidUtf8(std::string_view text) {
   return true;
 }
 
-char bracketFor(char opening) {
-  switch (opening) {
-    case '(':
-      return ')';
-    case '[':
-      return ']';
-    case '{':
-      return '}';
-    default:
-      return '\0';
-  }
-}
-
-bool isOpeningBracket(char c) { return c == '(' || c == '[' || c == '{'; }
-bool isClosingBracket(char c) { return c == ')' || c == ']' || c == '}'; }
-bool isBracket(char c) { return isOpeningBracket(c) || isClosingBracket(c); }
-
-const char* completionDetail(CompletionKind kind) {
-  switch (kind) {
-    case CompletionKind::Keyword:
-      return "keyword";
-    case CompletionKind::Type:
-      return "type";
-    case CompletionKind::Builtin:
-      return "builtin";
-    case CompletionKind::Function:
-      return "function";
-    case CompletionKind::Class:
-      return "class";
-    case CompletionKind::Property:
-      return "property";
-    case CompletionKind::Symbol:
-    default:
-      return "symbol";
-  }
-}
-
-int kindRank(CompletionKind kind) {
-  switch (kind) {
-    case CompletionKind::Class:
-    case CompletionKind::Function:
-      return 2;
-    case CompletionKind::Type:
-    case CompletionKind::Property:
-      return 1;
-    default:
-      return 0;
-  }
+bool isWordByte(unsigned char c) {
+  return std::isalnum(c) != 0 || c == '_' || c == '$';
 }
 
 uint64_t steadyTicks() {
@@ -164,6 +96,7 @@ Document::Document(std::shared_ptr<const Language> language, const DocumentOptio
   if (language_) {
     options_.languageId = language_->id;
   }
+  lineIndex_.rebuild("");
 }
 
 Document::~Document() = default;
@@ -178,11 +111,22 @@ Status Document::succeed() const {
   return Status::Ok;
 }
 
-std::string Document::allText() const { return buffer_.toString(); }
+const std::string& Document::currentText() const {
+  if (textDirty_) {
+    textCache_ = buffer_.toString();
+    textDirty_ = false;
+  }
+  return textCache_;
+}
 
-LexResult Document::lexAll() const {
-  const std::string text = allText();
-  return lex(text, *language_);
+std::shared_ptr<Analysis> Document::currentAnalysis() const {
+  const int32_t languageId = language_ ? language_->id : -1;
+  if (!analysis_ || analysisVersion_ != version_ || analysisLanguageId_ != languageId) {
+    analysis_ = std::make_shared<Analysis>(currentText(), language_);
+    analysisVersion_ = version_;
+    analysisLanguageId_ = languageId;
+  }
+  return analysis_;
 }
 
 Status Document::setText(std::string_view text) {
@@ -197,19 +141,22 @@ Status Document::setText(std::string_view text) {
     return fail(Status::OutOfRange, "document exceeds the configured maximum size");
   }
   buffer_.reset(text);
+  textCache_.assign(text.data(), text.size());
+  textDirty_ = false;
+  lineIndex_.rebuild(text);
+  analysis_.reset();
   version_ += 1;
   selection_ = Selection{};
   undoStack_.clear();
   redoStack_.clear();
   lastEditTick_ = 0;
-  invalidateLines();
   emitChange(ChangeKind::SetText, 0, 0, text.size());
   return succeed();
 }
 
 std::string Document::text() const {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
-  return buffer_.toString();
+  return currentText();
 }
 
 size_t Document::length() const {
@@ -236,6 +183,7 @@ Status Document::setLanguage(std::shared_ptr<const Language> language) {
   }
   language_ = std::move(language);
   options_.languageId = language_->id;
+  analysis_.reset();
   return succeed();
 }
 
@@ -276,16 +224,21 @@ Status Document::insert(size_t offset, std::string_view text) {
   if (buffer_.size() + text.size() > maxDocumentBytes_) {
     return fail(Status::OutOfRange, "document exceeds the configured maximum size");
   }
-  if (!text.empty()) {
-    const std::string existing = buffer_.toString();
-    if (offset < existing.size() && isContinuation(static_cast<unsigned char>(existing[offset]))) {
-      return fail(Status::InvalidArgument, "insert offset splits a UTF-8 code point");
-    }
+  if (text.empty()) {
+    return succeed();
   }
+  const std::string& existing = currentText();
+  if (offset < existing.size() &&
+      isContinuation(static_cast<unsigned char>(existing[offset]))) {
+    return fail(Status::InvalidArgument, "insert offset splits a UTF-8 code point");
+  }
+
   buffer_.insert(offset, text);
+  lineIndex_.applyEdit(offset, offset, text);
+  textDirty_ = true;
+  analysis_.reset();
   version_ += 1;
   recordEdit(offset, std::string(), std::string(text), true);
-  invalidateLines();
   emitChange(ChangeKind::Insert, offset, 0, text.size());
   return succeed();
 }
@@ -301,17 +254,20 @@ Status Document::erase(size_t start, size_t end) {
   if (start == end) {
     return succeed();
   }
-  const std::string existing = buffer_.toString();
+  const std::string& existing = currentText();
   if ((start < existing.size() &&
        isContinuation(static_cast<unsigned char>(existing[start]))) ||
-      (end < existing.size() && isContinuation(static_cast<unsigned char>(existing[end])))) {
+      (end < existing.size() &&
+       isContinuation(static_cast<unsigned char>(existing[end])))) {
     return fail(Status::InvalidArgument, "erase range splits a UTF-8 code point");
   }
   const std::string removed = buffer_.slice(start, end - start);
   buffer_.erase(start, end - start);
+  lineIndex_.applyEdit(start, end, std::string_view());
+  textDirty_ = true;
+  analysis_.reset();
   version_ += 1;
   recordEdit(start, removed, std::string(), false);
-  invalidateLines();
   emitChange(ChangeKind::Erase, start, removed.size(), 0);
   return succeed();
 }
@@ -330,18 +286,25 @@ Status Document::replace(size_t start, size_t end, std::string_view text) {
   if (buffer_.size() - (end - start) + text.size() > maxDocumentBytes_) {
     return fail(Status::OutOfRange, "document exceeds the configured maximum size");
   }
-  const std::string existing = buffer_.toString();
+  if (start == end && text.empty()) {
+    return succeed();
+  }
+  const std::string& existing = currentText();
   if ((start < existing.size() &&
        isContinuation(static_cast<unsigned char>(existing[start]))) ||
-      (end < existing.size() && isContinuation(static_cast<unsigned char>(existing[end])))) {
+      (end < existing.size() &&
+       isContinuation(static_cast<unsigned char>(existing[end])))) {
     return fail(Status::InvalidArgument, "replace range splits a UTF-8 code point");
   }
+
   const std::string removed = buffer_.slice(start, end - start);
   buffer_.erase(start, end - start);
   buffer_.insert(start, text);
+  lineIndex_.applyEdit(start, end, text);
+  textDirty_ = true;
+  analysis_.reset();
   version_ += 1;
   recordEdit(start, removed, std::string(text), false);
-  invalidateLines();
   emitChange(ChangeKind::Replace, start, removed.size(), text.size());
   return succeed();
 }
@@ -368,10 +331,13 @@ Status Document::undo() {
   undoStack_.pop_back();
   buffer_.erase(record.offset, record.inserted.size());
   buffer_.insert(record.offset, record.removed);
+  lineIndex_.applyEdit(record.offset, record.offset + record.inserted.size(),
+                       record.removed);
+  textDirty_ = true;
+  analysis_.reset();
   redoStack_.push_back(record);
   version_ += 1;
   lastEditTick_ = 0;
-  invalidateLines();
   emitChange(ChangeKind::Undo, record.offset, record.inserted.size(), record.removed.size());
   return succeed();
 }
@@ -388,10 +354,13 @@ Status Document::redo() {
   redoStack_.pop_back();
   buffer_.erase(record.offset, record.removed.size());
   buffer_.insert(record.offset, record.inserted);
+  lineIndex_.applyEdit(record.offset, record.offset + record.removed.size(),
+                       record.inserted);
+  textDirty_ = true;
+  analysis_.reset();
   undoStack_.push_back(record);
   version_ += 1;
   lastEditTick_ = 0;
-  invalidateLines();
   emitChange(ChangeKind::Redo, record.offset, record.removed.size(), record.inserted.size());
   return succeed();
 }
@@ -441,48 +410,9 @@ void Document::recordEdit(size_t offset, std::string removed, std::string insert
   }
 }
 
-void Document::invalidateLines() const { linesDirty_ = true; }
-
-void Document::ensureLines() const {
-  if (!linesDirty_) {
-    return;
-  }
-  const std::string text = buffer_.toString();
-  lines_.clear();
-  size_t start = 0;
-  for (size_t index = 0; index < text.size(); ++index) {
-    if (text[index] == '\n') {
-      size_t contentEnd = index;
-      if (index > start && text[index - 1] == '\r') {
-        contentEnd = index - 1;
-      }
-      lines_.push_back(LineInfo{start, contentEnd, index + 1});
-      start = index + 1;
-    }
-  }
-  lines_.push_back(LineInfo{start, text.size(), text.size()});
-  linesDirty_ = false;
-}
-
-size_t Document::lineOfOffset(size_t offset) const {
-  ensureLines();
-  size_t low = 0;
-  size_t high = lines_.size();
-  while (low + 1 < high) {
-    const size_t middle = low + (high - low) / 2;
-    if (lines_[middle].start <= offset) {
-      low = middle;
-    } else {
-      high = middle;
-    }
-  }
-  return low;
-}
-
 size_t Document::lineCount() const {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
-  ensureLines();
-  return lines_.size();
+  return lineIndex_.lineCount();
 }
 
 Status Document::lineAt(size_t index, LineInfo* out) const {
@@ -490,11 +420,13 @@ Status Document::lineAt(size_t index, LineInfo* out) const {
   if (!out) {
     return fail(Status::InvalidArgument, "line output is null");
   }
-  ensureLines();
-  if (index >= lines_.size()) {
+  if (index >= lineIndex_.lineCount()) {
     return fail(Status::OutOfRange, "line index is outside the document");
   }
-  *out = lines_[index];
+  const LineSpan span = lineIndex_.line(index, currentText());
+  out->start = span.start;
+  out->contentEnd = span.contentEnd;
+  out->end = span.end;
   return succeed();
 }
 
@@ -506,12 +438,11 @@ Status Document::offsetToPosition(size_t offset, Position* out) const {
   if (offset > buffer_.size()) {
     return fail(Status::OutOfRange, "offset is outside the document");
   }
-  ensureLines();
-  const size_t lineIndex = lineOfOffset(offset);
-  const size_t lineStart = lines_[lineIndex].start;
-  const std::string prefix = buffer_.slice(lineStart, offset - lineStart);
+  const std::string& text = currentText();
+  const size_t lineIndex = lineIndex_.lineOfOffset(offset);
+  const LineSpan span = lineIndex_.line(lineIndex, text);
   out->line = static_cast<uint32_t>(lineIndex);
-  out->column = static_cast<uint32_t>(codepointCount(prefix));
+  out->column = static_cast<uint32_t>(codepointCount(text, span.start, offset));
   return succeed();
 }
 
@@ -520,20 +451,16 @@ Status Document::positionToOffset(uint32_t line, uint32_t column, size_t* out) c
   if (!out) {
     return fail(Status::InvalidArgument, "offset output is null");
   }
-  ensureLines();
-  if (line >= lines_.size()) {
+  if (line >= lineIndex_.lineCount()) {
     return fail(Status::OutOfRange, "line index is outside the document");
   }
-  const LineInfo& info = lines_[line];
-  const std::string text = buffer_.toString();
-  size_t offset = info.start;
+  const std::string& text = currentText();
+  const LineSpan span = lineIndex_.line(line, text);
+  size_t offset = span.start;
   uint32_t currentColumn = 0;
-  while (currentColumn < column && offset < info.contentEnd) {
+  while (currentColumn < column && offset < span.contentEnd) {
     offset = nextCodepointOffset(text, offset);
     ++currentColumn;
-  }
-  if (offset > info.contentEnd) {
-    offset = info.contentEnd;
   }
   *out = offset;
   return succeed();
@@ -550,7 +477,7 @@ Status Document::setSelection(uint32_t anchor, uint32_t focus) {
   if (anchor > size || focus > size) {
     return fail(Status::OutOfRange, "selection is outside the document");
   }
-  const std::string text = buffer_.toString();
+  const std::string& text = currentText();
   if ((anchor < size && isContinuation(static_cast<unsigned char>(text[anchor]))) ||
       (focus < size && isContinuation(static_cast<unsigned char>(text[focus])))) {
     return fail(Status::InvalidArgument, "selection splits a UTF-8 code point");
@@ -561,8 +488,7 @@ Status Document::setSelection(uint32_t anchor, uint32_t focus) {
 
 Status Document::moveCursor(CursorMove move, bool extendSelection) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
-  ensureLines();
-  const std::string text = buffer_.toString();
+  const std::string& text = currentText();
   const size_t size = text.size();
   size_t focus = std::min<size_t>(selection_.focus, size);
   size_t anchor = std::min<size_t>(selection_.anchor, size);
@@ -624,11 +550,13 @@ Status Document::moveCursor(CursorMove move, bool extendSelection) {
       break;
     }
     case CursorMove::LineStart: {
-      target = lines_[lineOfOffset(focus)].start;
+      const LineSpan span = lineIndex_.line(lineIndex_.lineOfOffset(focus), text);
+      target = span.start;
       break;
     }
     case CursorMove::LineEnd: {
-      target = lines_[lineOfOffset(focus)].contentEnd;
+      const LineSpan span = lineIndex_.line(lineIndex_.lineOfOffset(focus), text);
+      target = span.contentEnd;
       break;
     }
     case CursorMove::DocumentStart: {
@@ -641,11 +569,11 @@ Status Document::moveCursor(CursorMove move, bool extendSelection) {
     }
     case CursorMove::Up:
     case CursorMove::Down: {
-      const size_t lineIndex = lineOfOffset(focus);
-      const size_t lineStart = lines_[lineIndex].start;
-      const std::string prefix = buffer_.slice(lineStart, focus - lineStart);
-      const uint32_t column = static_cast<uint32_t>(codepointCount(prefix));
-      uint32_t targetLine = static_cast<uint32_t>(lineIndex);
+      const size_t lineNumber = lineIndex_.lineOfOffset(focus);
+      const LineSpan current = lineIndex_.line(lineNumber, text);
+      const uint32_t column = static_cast<uint32_t>(
+          codepointCount(text, current.start, focus));
+      uint32_t targetLine = static_cast<uint32_t>(lineNumber);
       if (move == CursorMove::Up) {
         if (targetLine == 0) {
           target = 0;
@@ -653,20 +581,20 @@ Status Document::moveCursor(CursorMove move, bool extendSelection) {
         }
         --targetLine;
       } else {
-        if (targetLine + 1 >= lines_.size()) {
+        if (targetLine + 1 >= lineIndex_.lineCount()) {
           target = size;
           break;
         }
         ++targetLine;
       }
-      size_t resolved = lines_[targetLine].start;
-      const size_t contentEnd = lines_[targetLine].contentEnd;
+      const LineSpan span = lineIndex_.line(targetLine, text);
+      size_t resolved = span.start;
       uint32_t currentColumn = 0;
-      while (currentColumn < column && resolved < contentEnd) {
+      while (currentColumn < column && resolved < span.contentEnd) {
         resolved = nextCodepointOffset(text, resolved);
         ++currentColumn;
       }
-      target = std::min(resolved, contentEnd);
+      target = std::min(resolved, span.contentEnd);
       break;
     }
     default:
@@ -686,72 +614,15 @@ Status Document::matchBracket(size_t offset, size_t* outMatch) const {
   if (!outMatch) {
     return fail(Status::InvalidArgument, "match output is null");
   }
-  const std::string text = buffer_.toString();
-  if (offset > text.size()) {
+  if (offset > buffer_.size()) {
     return fail(Status::OutOfRange, "offset is outside the document");
   }
-  if (offset == text.size()) {
-    if (offset == 0) {
-      return fail(Status::Unsupported, "document is empty");
-    }
-    --offset;
+  size_t match = 0;
+  if (!currentAnalysis()->matchBracket(offset, &match)) {
+    return fail(Status::Unsupported, "no matching bracket");
   }
-  if (!isBracket(text[offset])) {
-    if (offset > 0 && isBracket(text[offset - 1])) {
-      --offset;
-    } else {
-      return fail(Status::Unsupported, "offset is not on a bracket");
-    }
-  }
-  const char bracket = text[offset];
-  const char partner = isOpeningBracket(bracket) ? bracketFor(bracket)
-                                                 : (bracket == ')' ? '(' : bracket == ']' ? '[' : '{');
-
-  const LexResult lexed = lex(text, *language_);
-  std::vector<size_t> brackets;
-  brackets.reserve(lexed.tokens.size() / 4);
-  for (const Token& token : lexed.tokens) {
-    if (token.kind == TokenKind::Punctuation && token.start < text.size() &&
-        isBracket(text[token.start])) {
-      brackets.push_back(token.start);
-    }
-  }
-  const auto found = std::find(brackets.begin(), brackets.end(), offset);
-  if (found == brackets.end()) {
-    return fail(Status::Unsupported, "offset is not on an active bracket");
-  }
-  const size_t tokenIndex = static_cast<size_t>(std::distance(brackets.begin(), found));
-
-  if (isOpeningBracket(bracket)) {
-    int depth = 0;
-    for (size_t index = tokenIndex + 1; index < brackets.size(); ++index) {
-      const char current = text[brackets[index]];
-      if (current == bracket) {
-        ++depth;
-      } else if (current == partner) {
-        if (depth == 0) {
-          *outMatch = brackets[index];
-          return succeed();
-        }
-        --depth;
-      }
-    }
-  } else {
-    int depth = 0;
-    for (size_t index = tokenIndex; index-- > 0;) {
-      const char current = text[brackets[index]];
-      if (current == bracket) {
-        ++depth;
-      } else if (current == partner) {
-        if (depth == 0) {
-          *outMatch = brackets[index];
-          return succeed();
-        }
-        --depth;
-      }
-    }
-  }
-  return fail(Status::Unsupported, "no matching bracket");
+  *outMatch = match;
+  return succeed();
 }
 
 std::vector<Token> Document::tokenize(size_t start, size_t end) const {
@@ -759,327 +630,34 @@ std::vector<Token> Document::tokenize(size_t start, size_t end) const {
   if (start > end || end > buffer_.size()) {
     return {};
   }
-  const LexResult lexed = lexAll();
-  std::vector<Token> filtered;
-  filtered.reserve(lexed.tokens.size());
-  for (const Token& token : lexed.tokens) {
-    if (token.end > start && token.start < end) {
-      filtered.push_back(token);
-    }
-  }
-  return filtered;
+  return currentAnalysis()->tokenize(start, end);
 }
 
 std::vector<CompletionItem> Document::complete(size_t offset) const {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
-  const std::string text = buffer_.toString();
-  offset = std::min(offset, text.size());
-
-  size_t prefixStart = offset;
-  while (prefixStart > 0 &&
-         isIdentifierByte(static_cast<unsigned char>(text[prefixStart - 1]))) {
-    --prefixStart;
-  }
-  const std::string prefix = text.substr(prefixStart, offset - prefixStart);
-  const std::string lowerPrefix = asciiLowerCopy(prefix);
-
-  const LexResult lexed = lex(text, *language_);
-  for (const Token& token : lexed.tokens) {
-    const bool covers = token.start < offset && offset <= token.end;
-    if (covers && (token.kind == TokenKind::Comment || token.kind == TokenKind::String ||
-                   token.kind == TokenKind::Invalid)) {
-      return {};
-    }
-  }
-
-  std::unordered_map<std::string, CompletionItem> candidates;
-  auto consider = [&](const std::string& label, CompletionKind kind, int32_t score) {
-    if (label.empty() || label.size() > 64) {
-      return;
-    }
-    if (!lowerPrefix.empty()) {
-      const std::string lowerLabel = asciiLowerCopy(label);
-      if (lowerLabel.size() < lowerPrefix.size() ||
-          lowerLabel.compare(0, lowerPrefix.size(), lowerPrefix) != 0) {
-        return;
-      }
-    }
-    auto existing = candidates.find(label);
-    if (existing != candidates.end()) {
-      if (score > existing->second.score) {
-        existing->second.score = score;
-        existing->second.kind = kind;
-        existing->second.detail = completionDetail(kind);
-      }
-      return;
-    }
-    CompletionItem item;
-    item.label = label;
-    item.insertText = label;
-    item.detail = completionDetail(kind);
-    item.kind = kind;
-    item.score = score;
-    candidates.emplace(label, std::move(item));
-  };
-
-  for (const std::string& keyword : language_->keywords) {
-    consider(keyword, CompletionKind::Keyword, 40);
-  }
-  for (const std::string& type : language_->types) {
-    consider(type, CompletionKind::Type, 36);
-  }
-  for (const std::string& builtin : language_->builtins) {
-    consider(builtin, CompletionKind::Builtin, 44);
-  }
-
-  struct SymbolStat {
-    int32_t occurrences = 0;
-    CompletionKind kind = CompletionKind::Symbol;
-    size_t lastOffset = 0;
-  };
-  std::unordered_map<std::string, SymbolStat> symbols;
-  const auto isDeclarationKeyword = [](const std::string& word, CompletionKind* kind) {
-    if (word == "class" || word == "struct" || word == "interface" || word == "trait" ||
-        word == "enum" || word == "record" || word == "object") {
-      *kind = CompletionKind::Class;
-      return true;
-    }
-    if (word == "def" || word == "function" || word == "fn" || word == "func" ||
-        word == "fun" || word == "sub") {
-      *kind = CompletionKind::Function;
-      return true;
-    }
-    if (word == "let" || word == "var" || word == "const" || word == "val" ||
-        word == "type") {
-      *kind = CompletionKind::Symbol;
-      return true;
-    }
-    return false;
-  };
-
-  const Token* previous = nullptr;
-  for (const Token& token : lexed.tokens) {
-    const bool named = token.kind == TokenKind::Identifier || token.kind == TokenKind::Function ||
-                       token.kind == TokenKind::Type || token.kind == TokenKind::Constant;
-    if (!named) {
-      if (token.kind != TokenKind::Comment) {
-        previous = &token;
-      }
-      continue;
-    }
-    if (token.end > text.size()) {
-      continue;
-    }
-    const std::string label = text.substr(token.start, token.end - token.start);
-    if (label.empty() || label.size() > 64) {
-      continue;
-    }
-    CompletionKind kind = CompletionKind::Symbol;
-    if (token.kind == TokenKind::Function) {
-      kind = CompletionKind::Function;
-    } else if (token.kind == TokenKind::Type) {
-      kind = CompletionKind::Type;
-    }
-    if (previous && previous->kind == TokenKind::Keyword) {
-      const std::string previousWord =
-          text.substr(previous->start, previous->end - previous->start);
-      CompletionKind declared = CompletionKind::Symbol;
-      if (isDeclarationKeyword(asciiLowerCopy(previousWord), &declared)) {
-        kind = declared;
-      }
-    }
-    SymbolStat& stat = symbols[label];
-    stat.occurrences += 1;
-    stat.lastOffset = token.start;
-    if (kindRank(kind) > kindRank(stat.kind)) {
-      stat.kind = kind;
-    }
-    if (token.kind != TokenKind::Keyword) {
-      previous = &token;
-    }
-  }
-
-  for (const auto& entry : symbols) {
-    const SymbolStat& stat = entry.second;
-    int32_t score = 58 + std::min<int32_t>(stat.occurrences, 20) * 2;
-    if (offset > stat.lastOffset && offset - stat.lastOffset < 2000) {
-      score += 6;
-    }
-    consider(entry.first, stat.kind, score);
-  }
-
-  std::vector<CompletionItem> result;
-  result.reserve(candidates.size());
-  for (auto& entry : candidates) {
-    result.push_back(std::move(entry.second));
-  }
-  std::sort(result.begin(), result.end(),
-            [](const CompletionItem& left, const CompletionItem& right) {
-              if (left.score != right.score) {
-                return left.score > right.score;
-              }
-              return left.label < right.label;
-            });
-  if (result.size() > 100) {
-    result.resize(100);
-  }
-  return result;
+  offset = std::min(offset, buffer_.size());
+  return currentAnalysis()->complete(offset);
 }
 
 std::vector<Diagnostic> Document::diagnose() const {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
-  const std::string text = buffer_.toString();
-  const LexResult lexed = lex(text, *language_);
-  std::vector<Diagnostic> diagnostics;
-
-  struct OpenBracket {
-    char bracket;
-    uint32_t offset;
-  };
-  std::vector<OpenBracket> stack;
-
-  for (const Token& token : lexed.tokens) {
-    if (diagnostics.size() >= 200) {
-      break;
-    }
-    if (token.kind != TokenKind::Punctuation || token.start >= text.size()) {
-      continue;
-    }
-    const char current = text[token.start];
-    if (isOpeningBracket(current)) {
-      stack.push_back(OpenBracket{current, token.start});
-    } else if (isClosingBracket(current)) {
-      if (stack.empty()) {
-        diagnostics.push_back(Diagnostic{token.start, token.start + 1, 1,
-                                         std::string("Unmatched '") + current + "'", "codecore"});
-        continue;
-      }
-      const char opening = stack.back().bracket;
-      if (bracketFor(opening) == current) {
-        stack.pop_back();
-      } else {
-        diagnostics.push_back(Diagnostic{token.start, token.start + 1, 1,
-                                         std::string("Mismatched '") + current + "', expected '" +
-                                             bracketFor(opening) + "'",
-                                         "codecore"});
-      }
-    }
-  }
-
-  for (const OpenBracket& open : stack) {
-    if (diagnostics.size() >= 200) {
-      break;
-    }
-    diagnostics.push_back(Diagnostic{open.offset, open.offset + 1, 1,
-                                     std::string("Unclosed '") + open.bracket + "'", "codecore"});
-  }
-
-  if (lexed.unterminatedString) {
-    const uint32_t start = std::min<uint32_t>(lexed.unterminatedStringStart,
-                                              static_cast<uint32_t>(text.size()));
-    diagnostics.push_back(Diagnostic{start, static_cast<uint32_t>(text.size()), 1,
-                                     "Unterminated string literal", "codecore"});
-  }
-  if (lexed.unterminatedBlockComment) {
-    const uint32_t start = std::min<uint32_t>(lexed.unterminatedBlockStart,
-                                              static_cast<uint32_t>(text.size()));
-    diagnostics.push_back(Diagnostic{start, static_cast<uint32_t>(text.size()), 1,
-                                     "Unterminated block comment", "codecore"});
-  }
-
-  std::sort(diagnostics.begin(), diagnostics.end(),
-            [](const Diagnostic& left, const Diagnostic& right) {
-              if (left.start != right.start) {
-                return left.start < right.start;
-              }
-              return left.message < right.message;
-            });
-  return diagnostics;
+  return currentAnalysis()->diagnose();
 }
 
 std::vector<FoldingRange> Document::foldingRanges() const {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
-  ensureLines();
-  const std::string text = buffer_.toString();
-  const LexResult lexed = lex(text, *language_);
-  std::vector<FoldingRange> ranges;
-  std::vector<uint32_t> openLines;
-
-  for (const Token& token : lexed.tokens) {
-    if (ranges.size() >= 500) {
-      break;
-    }
-    if (token.start >= text.size()) {
-      continue;
-    }
-    if (token.kind == TokenKind::Punctuation) {
-      const char current = text[token.start];
-      if (current == '{') {
-        openLines.push_back(static_cast<uint32_t>(lineOfOffset(token.start)));
-      } else if (current == '}' && !openLines.empty()) {
-        const uint32_t startLine = openLines.back();
-        openLines.pop_back();
-        const uint32_t endLine = static_cast<uint32_t>(lineOfOffset(token.start));
-        if (endLine > startLine) {
-          ranges.push_back(FoldingRange{startLine, endLine, 0});
-        }
-      }
-    } else if (token.kind == TokenKind::Comment) {
-      const uint32_t startLine = static_cast<uint32_t>(lineOfOffset(token.start));
-      const uint32_t endLine =
-          static_cast<uint32_t>(lineOfOffset(token.end > 0 ? token.end - 1 : token.start));
-      if (endLine > startLine) {
-        ranges.push_back(FoldingRange{startLine, endLine, 1});
-      }
-    }
-  }
-
-  std::sort(ranges.begin(), ranges.end(),
-            [](const FoldingRange& left, const FoldingRange& right) {
-              if (left.startLine != right.startLine) {
-                return left.startLine < right.startLine;
-              }
-              return left.endLine > right.endLine;
-            });
-  return ranges;
+  return currentAnalysis()->foldingRanges();
 }
 
-std::vector<Range> Document::find(std::string_view query, const SearchOptions& options) const {
+std::vector<Range> Document::find(std::string_view query,
+                                  const SearchOptions& options) const {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
-  std::vector<Range> results;
-  if (query.empty()) {
-    return results;
-  }
-  const std::string text = buffer_.toString();
-  const std::string needle = options.caseSensitive ? std::string(query)
-                                                    : asciiLowerCopy(query);
-  const std::string haystack = options.caseSensitive ? text : asciiLowerCopy(text);
+  return currentAnalysis()->find(query, options);
+}
 
-  size_t position = 0;
-  while (position + needle.size() <= haystack.size()) {
-    const size_t found = haystack.find(needle, position);
-    if (found == std::string::npos) {
-      break;
-    }
-    const size_t matchEnd = found + needle.size();
-    bool valid = true;
-    if (options.wholeWord) {
-      if (found > 0 && isWordByte(static_cast<unsigned char>(text[found - 1]))) {
-        valid = false;
-      }
-      if (matchEnd < text.size() && isWordByte(static_cast<unsigned char>(text[matchEnd]))) {
-        valid = false;
-      }
-    }
-    if (valid) {
-      results.push_back(Range{static_cast<uint32_t>(found), static_cast<uint32_t>(matchEnd)});
-      if (results.size() >= 10000) {
-        break;
-      }
-    }
-    position = found + 1;
-  }
-  return results;
+std::shared_ptr<Snapshot> Document::createSnapshot() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  return std::make_shared<Snapshot>(currentText(), language_, version_);
 }
 
 void Document::setChangeListener(ChangeListener listener, void* userData) {

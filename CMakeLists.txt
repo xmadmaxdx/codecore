@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(CodeCore
-  VERSION 0.1.0
+  VERSION 0.2.0
   DESCRIPTION "Embeddable code editor engine"
   LANGUAGES CXX)
 
@@ -17,7 +17,10 @@ set(CODECORE_CORE_SOURCES
   core/text_buffer/text_buffer.cpp
   core/language/language_registry.cpp
   core/language/lexer.cpp
+  core/document/line_index.cpp
   core/document/document.cpp
+  core/analysis/analysis.cpp
+  core/snapshot/snapshot.cpp
   core/engine/engine.cpp
   native/src/codecore_api.cpp
 )
@@ -86,6 +89,12 @@ if(CODECORE_BUILD_TESTS)
     target_compile_options(codecore_tests PRIVATE -Wall -Wextra)
   endif()
   add_test(NAME codecore_core COMMAND codecore_tests)
+
+  # Manual benchmark; intentionally not registered with CTest because timings
+  # are machine-dependent.
+  add_executable(codecore_benchmark tests/performance/benchmark_core.cpp)
+  target_link_libraries(codecore_benchmark PRIVATE codecore)
+  target_include_directories(codecore_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
 endif()
 
 install(TARGETS codecore codecore_shared

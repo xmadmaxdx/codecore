@@ -21,8 +21,12 @@
  * The engine's language registry is immutable after creation and may be read
  * from multiple threads. A document is internally serialized; calls on the same
  * document from different threads are safe, but a single document should not be
- * the subject of concurrent long-running batch work in v0.1. Change listeners
- * are invoked synchronously on the mutating thread.
+ * the subject of concurrent long-running batch work. Change listeners are
+ * invoked synchronously on the mutating thread.
+ *
+ * Snapshots (cc_document_create_snapshot) are immutable, may be queried from
+ * any thread, and are the recommended way to move analysis off the document
+ * lock. They remain valid after the source document changes or is destroyed.
  *
  * Text offsets
  * ------------
@@ -33,9 +37,15 @@
  *
  * Language capabilities
  * ---------------------
- * v0.1 ships a lexical (Level 1) language layer: comments, strings, numbers,
+ * v0.2 ships a lexical (Level 1) language layer: comments, strings, numbers,
  * keywords, types and brackets. It is *not* Tree-sitter and makes no semantic
  * claims. See docs/status.md.
+ *
+ * Analysis caching
+ * ---------------
+ * Document language services reuse one immutable analysis per text version;
+ * repeated tokenize/diagnose/folding calls do not re-lex unchanged text.
+ * Snapshots hold their own analysis caches.
  */
 
 #ifndef CODECORE_CODECORE_H
@@ -49,9 +59,9 @@ extern "C" {
 #endif
 
 #define CODECORE_VERSION_MAJOR 0
-#define CODECORE_VERSION_MINOR 1
+#define CODECORE_VERSION_MINOR 2
 #define CODECORE_VERSION_PATCH 0
-#define CODECORE_ABI_VERSION 1u
+#define CODECORE_ABI_VERSION 2u
 
 #if defined(_WIN32) && defined(CODECORE_BUILD_SHARED)
 #define CC_API __declspec(dllexport)
@@ -63,6 +73,7 @@ extern "C" {
 
 typedef struct cc_engine cc_engine;
 typedef struct cc_document cc_document;
+typedef struct cc_snapshot cc_snapshot;
 
 typedef enum cc_status {
   CC_STATUS_OK = 0,
@@ -296,6 +307,25 @@ CC_API void cc_folding_ranges_free(cc_folding_range* ranges);
 CC_API size_t cc_document_find(const cc_document* document, const char* query, size_t query_length,
                                const cc_search_options* options, cc_range** out_ranges);
 CC_API void cc_search_ranges_free(cc_range* ranges);
+
+/* Immutable snapshots. Queries are thread-safe for a given snapshot. */
+CC_API cc_snapshot* cc_document_create_snapshot(const cc_document* document);
+CC_API void cc_snapshot_destroy(cc_snapshot* snapshot);
+CC_API uint64_t cc_snapshot_version(const cc_snapshot* snapshot);
+CC_API size_t cc_snapshot_length(const cc_snapshot* snapshot);
+CC_API int32_t cc_snapshot_language(const cc_snapshot* snapshot);
+CC_API char* cc_snapshot_get_text(const cc_snapshot* snapshot, size_t* out_length);
+CC_API size_t cc_snapshot_tokenize(const cc_snapshot* snapshot, size_t start, size_t end,
+                                  cc_token** out_tokens);
+CC_API size_t cc_snapshot_complete(const cc_snapshot* snapshot, size_t offset,
+                                   cc_completion_item** out_items);
+CC_API size_t cc_snapshot_diagnose(const cc_snapshot* snapshot,
+                                   cc_diagnostic** out_diagnostics);
+CC_API size_t cc_snapshot_folding_ranges(const cc_snapshot* snapshot,
+                                         cc_folding_range** out_ranges);
+CC_API size_t cc_snapshot_find(const cc_snapshot* snapshot, const char* query,
+                               size_t query_length, const cc_search_options* options,
+                               cc_range** out_ranges);
 
 /* Change notifications. */
 CC_API void cc_document_set_change_listener(cc_document* document, cc_change_listener listener, void* user_data);
