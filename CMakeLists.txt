@@ -64,8 +64,13 @@ if(CODECORE_BUILD_JNI)
   find_package(JNI REQUIRED)
   add_library(codecore_jni SHARED native/jni/codecore_jni.cpp $<TARGET_OBJECTS:codecore_objects>)
   target_include_directories(codecore_jni PRIVATE ${JNI_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
-  target_link_libraries(codecore_jni PRIVATE ${JNI_LIBRARIES})
+  # JNI entry points are provided by the host VM at runtime; linking jvm.lib is
+  # unnecessary and breaks cross-compilation (including Android NDK builds).
   set_target_properties(codecore_jni PROPERTIES OUTPUT_NAME codecore_jni)
+  if(WIN32)
+    # System.loadLibrary("codecore_jni") expects codecore_jni.dll, not libcodecore_jni.dll.
+    set_target_properties(codecore_jni PROPERTIES PREFIX "")
+  endif()
 endif()
 
 if(CODECORE_BUILD_TESTS)
