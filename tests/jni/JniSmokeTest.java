@@ -22,6 +22,20 @@ public final class JniSmokeTest {
         }
     }
 
+    static final class Listener {
+        int count;
+        long version;
+        int kind;
+        int origin;
+
+        public void onChange(long version, int kind, int start, int removed, int inserted, int origin) {
+            this.count += 1;
+            this.version = version;
+            this.kind = kind;
+            this.origin = origin;
+        }
+    }
+
     private static boolean contains(int[] packed, int kind) {
         for (int index = 0; index + 2 < packed.length; index += 3) {
             if (packed[index + 2] == kind) {
@@ -32,7 +46,7 @@ public final class JniSmokeTest {
     }
 
     public static void main(String[] args) {
-        check("0.2.0".equals(NativeCodeCore.nativeVersion()), "native version");
+        check("0.3.0".equals(NativeCodeCore.nativeVersion()), "native version");
 
         long document = NativeCodeCore.nativeCreate("python", 4, true);
         check(document != 0L, "document creation");
@@ -88,6 +102,78 @@ public final class JniSmokeTest {
         String[] diagnostics = NativeCodeCore.nativeDiagnose(broken);
         check(diagnostics.length > 0, "broken code diagnostics");
         NativeCodeCore.nativeDestroy(broken);
+
+        long agent = NativeCodeCore.nativeCreate("python", 4, true);
+        check(NativeCodeCore.nativeSetText(agent, "one\ntwo\n") == 0, "agent set text");
+        check(NativeCodeCore.nativeEditOrigin(agent) == 2, "default host origin");
+        check(NativeCodeCore.nativeSetEditOrigin(agent, 0) == 0, "set user origin");
+        check(NativeCodeCore.nativeEditOrigin(agent) == 0, "read user origin");
+
+        check(NativeCodeCore.nativeSetProposal(agent, "one\nchanged\nthree\n", 1) == 0,
+                "set proposal");
+        check(NativeCodeCore.nativeHasProposal(agent), "has proposal");
+        check("one\ntwo\n".equals(NativeCodeCore.nativeGetText(agent)),
+                "proposal does not mutate text");
+        String[] diff = NativeCodeCore.nativeProposalDiff(agent);
+        check(diff.length > 0, "proposal diff");
+        check(NativeCodeCore.nativeAcceptProposal(agent) == 0, "accept proposal");
+        check("one\nchanged\nthree\n".equals(NativeCodeCore.nativeGetText(agent)),
+                "accepted proposal text");
+        check(!NativeCodeCore.nativeHasProposal(agent), "proposal cleared");
+        check(NativeCodeCore.nativeUndo(agent) == 0, "proposal undo");
+        check("one\ntwo\n".equals(NativeCodeCore.nativeGetText(agent)), "proposal undo text");
+
+        check(NativeCodeCore.nativeSetGhostText(agent, 8, "return 1", 1) == 0,
+                "set ghost text");
+        String ghost = NativeCodeCore.nativeGhostText(agent);
+        check(ghost != null && ghost.endsWith("return 1"), "ghost text payload");
+        check("one\ntwo\n".equals(NativeCodeCore.nativeGetText(agent)),
+                "ghost text not inserted");
+        check(NativeCodeCore.nativeAcceptGhostText(agent, 6) == 0, "accept partial ghost");
+        check(NativeCodeCore.nativeGetText(agent).endsWith("return"), "partial ghost text");
+        check(NativeCodeCore.nativeUndo(agent) == 0, "ghost undo");
+        check(NativeCodeCore.nativeSetGhostText(agent, 0, "x", 1) == 0, "set ghost again");
+        check(NativeCodeCore.nativeDismissGhostText(agent) == 0, "dismiss ghost");
+        check(NativeCodeCore.nativeGhostText(agent) == null, "ghost cleared");
+
+        long snapshot = NativeCodeCore.nativeCreateSnapshot(agent);
+        check(snapshot != 0L, "snapshot create");
+        check(NativeCodeCore.nativeSnapshotLength(snapshot) == 8, "snapshot length");
+        check(NativeCodeCore.nativeSetText(agent, "replacement\n") == 0, "replace agent text");
+        check(NativeCodeCore.nativeRestoreSnapshot(agent, snapshot) == 0, "restore snapshot");
+        check("one\ntwo\n".equals(NativeCodeCore.nativeGetText(agent)), "restored text");
+        check(NativeCodeCore.nativeUndo(agent) == 0, "snapshot restore undo");
+        check("replacement\n".equals(NativeCodeCore.nativeGetText(agent)), "restore undo text");
+        NativeCodeCore.nativeSnapshotDestroy(snapshot);
+
+        check(NativeCodeCore.nativeSetEditable(agent, false) == 0, "set not editable");
+        check(NativeCodeCore.nativeIsReadOnly(agent), "editable maps to read-only");
+        check(NativeCodeCore.nativeSetEditable(agent, true) == 0, "set editable");
+
+        NativeCodeCore.nativeSetText(agent, "abc\ndef");
+        check(NativeCodeCore.nativeSetSelection(agent, 1, 2) == 0, "set selection");
+        long selection = NativeCodeCore.nativeGetSelection(agent);
+        check((selection >>> 32) == 1L && (selection & 0xFFFFFFFFL) == 2L,
+                "selection round-trip");
+        check(NativeCodeCore.nativeMoveCursor(agent, 0, false) == 0, "cursor left");
+        long collapsed = NativeCodeCore.nativeGetSelection(agent);
+        check((collapsed >>> 32) == 1L && (collapsed & 0xFFFFFFFFL) == 1L,
+                "cursor collapse");
+        check(NativeCodeCore.nativeSetLanguage(agent, 1) == 0, "switch language");
+        check(NativeCodeCore.nativeLanguageId(agent) == 1, "language switched");
+        check(NativeCodeCore.nativeSetLanguage(agent, 0) == 0, "switch language back");
+
+        Listener listener = new Listener();
+        NativeCodeCore.nativeSetChangeListener(agent, listener);
+        check(NativeCodeCore.nativeInsert(agent, 0, "#") == 0, "listener insert");
+        check(listener.count == 1, "change listener fired");
+        check(listener.kind == 1, "change listener kind");
+        check(listener.origin == 0, "change listener origin");
+        NativeCodeCore.nativeSetChangeListener(agent, null);
+        check(NativeCodeCore.nativeInsert(agent, 0, "#") == 0, "listener detached insert");
+        check(listener.count == 1, "change listener detached");
+
+        NativeCodeCore.nativeDestroy(agent);
 
         NativeCodeCore.nativeDestroy(document);
         check(true, "destroy does not crash");

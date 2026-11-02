@@ -90,7 +90,7 @@ cc_document* makeDocument(cc_engine* engine, int32_t languageId = 0) {
 void testVersionAndLanguages(cc_engine* engine) {
   CHECK(cc_abi_version() == CODECORE_ABI_VERSION);
   CHECK(cc_version_string() != nullptr);
-  CHECK(std::strcmp(cc_version_string(), "0.2.0") == 0);
+  CHECK(std::strcmp(cc_version_string(), "0.3.0") == 0);
   CHECK(cc_engine_language_count(engine) == 23);
   CHECK(cc_engine_find_language(engine, "python") == 0);
   CHECK(cc_engine_find_language(engine, "kotlin") == 1);
@@ -496,6 +496,124 @@ void testChangeEvents(cc_engine* engine) {
   cc_document_destroy(document);
 }
 
+void testAgentEditing(cc_engine* engine) {
+  cc_document* document = makeDocument(engine, 3);
+  EventState state;
+  cc_document_set_change_listener(document, changeListener, &state);
+  const std::string original = "line1\nline2\n";
+  CHECK(cc_document_set_text(document, original.data(), original.size()) == CC_STATUS_OK);
+
+  CHECK(cc_document_edit_origin(document) == CC_EDIT_ORIGIN_HOST);
+  CHECK(cc_document_set_edit_origin(document, CC_EDIT_ORIGIN_USER) == CC_STATUS_OK);
+  CHECK(cc_document_insert(document, 0, "# ", 2) == CC_STATUS_OK);
+  CHECK(state.last.origin == CC_EDIT_ORIGIN_USER);
+  CHECK(cc_document_undo(document) == CC_STATUS_OK);
+  CHECK(documentText(document) == original);
+
+  CHECK(cc_document_set_edit_origin(document, CC_EDIT_ORIGIN_AI) == CC_STATUS_OK);
+  const std::string proposed = "line1\nchanged\nline3\n";
+  CHECK(cc_document_set_proposed_text(document, proposed.data(), proposed.size(),
+                                      CC_EDIT_ORIGIN_AI) == CC_STATUS_OK);
+  CHECK(cc_document_has_proposal(document) == 1);
+  size_t proposedLength = 0;
+  char* proposedText = cc_document_get_proposed_text(document, &proposedLength);
+  CHECK(proposedLength == proposed.size());
+  CHECK(std::string(proposedText ? proposedText : "", proposedLength) == proposed);
+  cc_string_free(proposedText);
+  CHECK(documentText(document) == original);
+
+  cc_diff_line* diff = nullptr;
+  const size_t diffCount = cc_document_proposal_diff(document, &diff);
+  CHECK(diffCount > 0);
+  bool hasInsert = false;
+  bool hasDelete = false;
+  for (size_t index = 0; index < diffCount; ++index) {
+    hasInsert = hasInsert || diff[index].kind == 1;
+    hasDelete = hasDelete || diff[index].kind == 2;
+  }
+  CHECK(hasInsert);
+  CHECK(hasDelete);
+  cc_diff_lines_free(diff, diffCount);
+
+  const uint64_t beforeAccept = cc_document_version(document);
+  CHECK(cc_document_accept_proposal(document) == CC_STATUS_OK);
+  CHECK(documentText(document) == proposed);
+  CHECK(cc_document_has_proposal(document) == 0);
+  CHECK(cc_document_version(document) == beforeAccept + 1);
+  CHECK(state.last.kind == CC_CHANGE_PROPOSAL_ACCEPTED);
+  CHECK(state.last.origin == CC_EDIT_ORIGIN_AI);
+  CHECK(cc_document_undo(document) == CC_STATUS_OK);
+  CHECK(documentText(document) == original);
+
+  CHECK(cc_document_set_proposed_text(document, proposed.data(), proposed.size(),
+                                      CC_EDIT_ORIGIN_AI) == CC_STATUS_OK);
+  CHECK(cc_document_reject_proposal(document) == CC_STATUS_OK);
+  CHECK(cc_document_has_proposal(document) == 0);
+  CHECK(documentText(document) == original);
+  CHECK(state.last.kind == CC_CHANGE_PROPOSAL_REJECTED);
+
+  const std::string prefix = "def f():\n    ";
+  CHECK(cc_document_set_text(document, prefix.data(), prefix.size()) == CC_STATUS_OK);
+  const std::string ghost = "return 1";
+  CHECK(cc_document_set_ghost_text(document, prefix.size(), ghost.data(), ghost.size(),
+                                   CC_EDIT_ORIGIN_AI) == CC_STATUS_OK);
+  size_t ghostOffset = 0;
+  size_t ghostLength = 0;
+  uint32_t ghostOrigin = 0;
+  char* ghostText =
+      cc_document_get_ghost_text(document, &ghostOffset, &ghostLength, &ghostOrigin);
+  CHECK(ghostOffset == prefix.size());
+  CHECK(ghostLength == ghost.size());
+  CHECK(ghostOrigin == CC_EDIT_ORIGIN_AI);
+  CHECK(std::string(ghostText ? ghostText : "", ghostLength) == ghost);
+  cc_string_free(ghostText);
+  CHECK(documentText(document) == prefix);
+
+  CHECK(cc_document_accept_ghost_text(document, 6) == CC_STATUS_OK);
+  CHECK(documentText(document) == prefix + "return");
+  CHECK(state.last.kind == CC_CHANGE_GHOST_TEXT_ACCEPTED);
+  CHECK(state.last.origin == CC_EDIT_ORIGIN_AI);
+  CHECK(cc_document_get_ghost_text(document, nullptr, nullptr, nullptr) == nullptr);
+  CHECK(cc_document_undo(document) == CC_STATUS_OK);
+  CHECK(documentText(document) == prefix);
+
+  CHECK(cc_document_set_ghost_text(document, prefix.size(), ghost.data(), ghost.size(),
+                                   CC_EDIT_ORIGIN_AI) == CC_STATUS_OK);
+  CHECK(cc_document_dismiss_ghost_text(document) == CC_STATUS_OK);
+  CHECK(state.last.kind == CC_CHANGE_GHOST_TEXT_DISMISSED);
+  CHECK(documentText(document) == prefix);
+
+  CHECK(cc_document_set_ghost_text(document, prefix.size(), ghost.data(), ghost.size(),
+                                   CC_EDIT_ORIGIN_AI) == CC_STATUS_OK);
+  CHECK(cc_document_insert(document, 0, "#", 1) == CC_STATUS_OK);
+  CHECK(cc_document_get_ghost_text(document, nullptr, nullptr, nullptr) == nullptr);
+
+  CHECK(cc_document_set_text(document, original.data(), original.size()) == CC_STATUS_OK);
+  cc_snapshot* snapshot = cc_document_create_snapshot(document);
+  CHECK(snapshot != nullptr);
+  const std::string newer = "newer\n";
+  CHECK(cc_document_set_text(document, newer.data(), newer.size()) == CC_STATUS_OK);
+  CHECK(cc_document_restore_snapshot(document, snapshot) == CC_STATUS_OK);
+  CHECK(documentText(document) == original);
+  CHECK(state.last.kind == CC_CHANGE_SNAPSHOT_RESTORED);
+  CHECK(cc_document_undo(document) == CC_STATUS_OK);
+  CHECK(documentText(document) == newer);
+  cc_snapshot_destroy(snapshot);
+
+  CHECK(cc_document_set_editable(document, 0) == CC_STATUS_OK);
+  CHECK(cc_document_is_read_only(document) == 1);
+  CHECK(cc_document_set_proposed_text(document, proposed.data(), proposed.size(),
+                                      CC_EDIT_ORIGIN_AI) == CC_STATUS_OK);
+  CHECK(cc_document_accept_proposal(document) == CC_STATUS_READ_ONLY);
+  CHECK(cc_document_set_ghost_text(document, 0, ghost.data(), ghost.size(),
+                                   CC_EDIT_ORIGIN_AI) == CC_STATUS_OK);
+  CHECK(cc_document_accept_ghost_text(document, 0) == CC_STATUS_READ_ONLY);
+  CHECK(cc_document_set_editable(document, 1) == CC_STATUS_OK);
+  CHECK(cc_document_is_read_only(document) == 0);
+  cc_document_set_change_listener(document, nullptr, nullptr);
+  cc_document_destroy(document);
+}
+
 void testSnapshots(cc_engine* engine) {
   cc_document* document = makeDocument(engine, 3);
   const std::string source =
@@ -740,6 +858,7 @@ int main() {
   testSearch(engine);
   testBrackets(engine);
   testChangeEvents(engine);
+  testAgentEditing(engine);
   testSnapshots(engine);
   testLineIndexFuzz(engine);
   testAllLanguages(engine);

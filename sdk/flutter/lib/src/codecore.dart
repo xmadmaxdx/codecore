@@ -254,6 +254,211 @@ class CodeCoreDocument {
     _check(_bindings.documentSetReadOnly(_handle, value ? 1 : 0));
   }
 
+  bool get editable => !readOnly;
+
+  set editable(bool value) {
+    _ensureAlive();
+    _check(_bindings.documentSetEditable(_handle, value ? 1 : 0));
+  }
+
+  EditOrigin get editOrigin {
+    _ensureAlive();
+    return EditOrigin.fromNative(_bindings.documentEditOrigin(_handle));
+  }
+
+  set editOrigin(EditOrigin value) {
+    _ensureAlive();
+    _check(_bindings.documentSetEditOrigin(_handle, value.nativeValue));
+  }
+
+  bool get hasProposal {
+    _ensureAlive();
+    return _bindings.documentHasProposal(_handle) != 0;
+  }
+
+  /// Preview content that does not modify the document until accepted.
+  String? get proposal {
+    _ensureAlive();
+    if (!hasProposal) {
+      return null;
+    }
+    final lengthPointer = _bindings.allocate(sizeOf<IntPtr>()).cast<IntPtr>();
+    final textPointer = _bindings.documentGetProposedText(_handle, lengthPointer);
+    try {
+      if (textPointer == nullptr) {
+        return '';
+      }
+      return utf8.decode(
+        textPointer.asTypedList(lengthPointer.value),
+        allowMalformed: true,
+      );
+    } finally {
+      if (textPointer != nullptr) {
+        _bindings.stringFree(textPointer);
+      }
+      _bindings.freePointer(lengthPointer);
+    }
+  }
+
+  set proposal(String? value) {
+    _ensureAlive();
+    if (value == null) {
+      rejectProposal();
+      return;
+    }
+    final encoded = utf8.encode(value);
+    final pointer = _bindings.allocate(encoded.length + 1);
+    pointer.asTypedList(encoded.length).setAll(0, encoded);
+    try {
+      _check(_bindings.documentSetProposedText(
+        _handle,
+        pointer,
+        encoded.length,
+        EditOrigin.ai.nativeValue,
+      ));
+    } finally {
+      _bindings.freePointer(pointer);
+    }
+  }
+
+  void setProposal(String text, {EditOrigin origin = EditOrigin.ai}) {
+    _ensureAlive();
+    final encoded = utf8.encode(text);
+    final pointer = _bindings.allocate(encoded.length + 1);
+    pointer.asTypedList(encoded.length).setAll(0, encoded);
+    try {
+      _check(_bindings.documentSetProposedText(
+        _handle,
+        pointer,
+        encoded.length,
+        origin.nativeValue,
+      ));
+    } finally {
+      _bindings.freePointer(pointer);
+    }
+  }
+
+  List<DiffLine> get proposalDiff {
+    _ensureAlive();
+    if (!hasProposal) {
+      return const [];
+    }
+    final slot = _bindings
+        .allocate(sizeOf<Pointer<CcDiffLine>>())
+        .cast<Pointer<CcDiffLine>>();
+    final count = _bindings.documentProposalDiff(_handle, slot);
+    final pointer = slot.value;
+    final lines = <DiffLine>[];
+    try {
+      for (var index = 0; index < count; index += 1) {
+        final line = (pointer + index).ref;
+        lines.add(DiffLine(
+          kind: DiffKind.fromNative(line.kind),
+          oldLine: line.oldLine == 0xFFFFFFFF ? -1 : line.oldLine,
+          newLine: line.newLine == 0xFFFFFFFF ? -1 : line.newLine,
+          text: _bindings.readCString(line.text),
+        ));
+      }
+    } finally {
+      if (pointer != nullptr) {
+        _bindings.diffLinesFree(pointer, count);
+      }
+      _bindings.freePointer(slot);
+    }
+    return lines;
+  }
+
+  void acceptProposal() {
+    _ensureAlive();
+    _check(_bindings.documentAcceptProposal(_handle));
+  }
+
+  void rejectProposal() {
+    _ensureAlive();
+    _check(_bindings.documentRejectProposal(_handle));
+  }
+
+  /// The current host-provided inline suggestion, if any.
+  GhostText? get ghostText {
+    _ensureAlive();
+    final offsetPointer = _bindings.allocate(sizeOf<IntPtr>()).cast<IntPtr>();
+    final lengthPointer = _bindings.allocate(sizeOf<IntPtr>()).cast<IntPtr>();
+    final originPointer = _bindings.allocate(sizeOf<Uint32>()).cast<Uint32>();
+    final textPointer = _bindings.documentGetGhostText(
+      _handle,
+      offsetPointer,
+      lengthPointer,
+      originPointer,
+    );
+    try {
+      if (textPointer == nullptr) {
+        return null;
+      }
+      return GhostText(
+        offset: offsetPointer.value,
+        text: utf8.decode(
+          textPointer.asTypedList(lengthPointer.value),
+          allowMalformed: true,
+        ),
+        origin: EditOrigin.fromNative(originPointer.value),
+      );
+    } finally {
+      if (textPointer != nullptr) {
+        _bindings.stringFree(textPointer);
+      }
+      _bindings.freePointer(originPointer);
+      _bindings.freePointer(lengthPointer);
+      _bindings.freePointer(offsetPointer);
+    }
+  }
+
+  void showGhostText(
+    int offset,
+    String text, {
+    EditOrigin origin = EditOrigin.ai,
+  }) {
+    _ensureAlive();
+    final encoded = utf8.encode(text);
+    final pointer = _bindings.allocate(encoded.length + 1);
+    pointer.asTypedList(encoded.length).setAll(0, encoded);
+    try {
+      _check(_bindings.documentSetGhostText(
+        _handle,
+        offset,
+        pointer,
+        encoded.length,
+        origin.nativeValue,
+      ));
+    } finally {
+      _bindings.freePointer(pointer);
+    }
+  }
+
+  /// Accepts all ghost text, or only [maxCodePoints] leading code points.
+  void acceptGhostText({int maxCodePoints = 0}) {
+    _ensureAlive();
+    _check(_bindings.documentAcceptGhostText(_handle, maxCodePoints));
+  }
+
+  void dismissGhostText() {
+    _ensureAlive();
+    _check(_bindings.documentDismissGhostText(_handle));
+  }
+
+  CodeCoreSnapshot createSnapshot() {
+    _ensureAlive();
+    final handle = _bindings.snapshotCreate(_handle);
+    if (handle == nullptr) {
+      throw const CodeCoreException(5, 'snapshot creation failed');
+    }
+    return CodeCoreSnapshot._(_bindings, handle);
+  }
+
+  void restoreSnapshot(CodeCoreSnapshot snapshot) {
+    _ensureAlive();
+    _check(_bindings.documentRestoreSnapshot(_handle, snapshot._handle));
+  }
+
   int get tabSize {
     _ensureAlive();
     return _bindings.documentTabSize(_handle);
@@ -593,6 +798,7 @@ class CodeCoreDocument {
           start: value.start,
           removedLength: value.removedLength,
           insertedLength: value.insertedLength,
+          origin: EditOrigin.fromNative(value.origin),
         ));
       },
     );
@@ -626,6 +832,64 @@ class CodeCoreDocument {
   void _ensureAlive() {
     if (_disposed) {
       throw StateError('CodeCoreDocument has been disposed');
+    }
+  }
+}
+
+/// Immutable document snapshot owned by the caller.
+class CodeCoreSnapshot {
+  CodeCoreSnapshot._(this._bindings, this._handle);
+
+  final CodeCoreBindings _bindings;
+  final Pointer<Void> _handle;
+  bool _disposed = false;
+
+  int get version {
+    _ensureAlive();
+    return _bindings.snapshotVersion(_handle);
+  }
+
+  int get length {
+    _ensureAlive();
+    return _bindings.snapshotLength(_handle);
+  }
+
+  int get languageId {
+    _ensureAlive();
+    return _bindings.snapshotLanguage(_handle);
+  }
+
+  String get text {
+    _ensureAlive();
+    final lengthPointer = _bindings.allocate(sizeOf<IntPtr>()).cast<IntPtr>();
+    final textPointer = _bindings.snapshotGetText(_handle, lengthPointer);
+    try {
+      if (textPointer == nullptr) {
+        return '';
+      }
+      return utf8.decode(
+        textPointer.asTypedList(lengthPointer.value),
+        allowMalformed: true,
+      );
+    } finally {
+      if (textPointer != nullptr) {
+        _bindings.stringFree(textPointer);
+      }
+      _bindings.freePointer(lengthPointer);
+    }
+  }
+
+  void dispose() {
+    if (_disposed) {
+      return;
+    }
+    _disposed = true;
+    _bindings.snapshotDestroy(_handle);
+  }
+
+  void _ensureAlive() {
+    if (_disposed) {
+      throw StateError('CodeCoreSnapshot has been disposed');
     }
   }
 }

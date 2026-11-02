@@ -143,6 +143,19 @@ final class CcSearchOptions extends Struct {
   external int wholeWord;
 }
 
+final class CcDiffLine extends Struct {
+  @Uint32()
+  external int kind;
+
+  @Uint32()
+  external int oldLine;
+
+  @Uint32()
+  external int newLine;
+
+  external Pointer<Uint8> text;
+}
+
 final class CcChangeEvent extends Struct {
   @Uint64()
   external int version;
@@ -158,6 +171,9 @@ final class CcChangeEvent extends Struct {
 
   @Uint32()
   external int insertedLength;
+
+  @Uint32()
+  external int origin;
 }
 
 class CodeCoreException implements Exception {
@@ -236,6 +252,12 @@ typedef _ReadOnlyDart = int Function(Pointer<Void>);
 
 typedef _SetReadOnlyNative = Int32 Function(Pointer<Void>, Uint8);
 typedef _SetReadOnlyDart = int Function(Pointer<Void>, int);
+
+typedef _EditOriginNative = Uint32 Function(Pointer<Void>);
+typedef _EditOriginDart = int Function(Pointer<Void>);
+
+typedef _SetEditOriginNative = Int32 Function(Pointer<Void>, Uint32);
+typedef _SetEditOriginDart = int Function(Pointer<Void>, int);
 
 typedef _TabSizeNative = Uint32 Function(Pointer<Void>);
 typedef _TabSizeDart = int Function(Pointer<Void>);
@@ -346,6 +368,69 @@ typedef _FindDart = int Function(
 typedef _FreeRangesNative = Void Function(Pointer<CcRange>);
 typedef _FreeRangesDart = void Function(Pointer<CcRange>);
 
+typedef _SetProposedNative = Int32 Function(
+    Pointer<Void>, Pointer<Uint8>, IntPtr, Uint32);
+typedef _SetProposedDart = int Function(
+    Pointer<Void>, Pointer<Uint8>, int, int);
+
+typedef _HasProposalNative = Uint8 Function(Pointer<Void>);
+typedef _HasProposalDart = int Function(Pointer<Void>);
+
+typedef _GetProposedNative = Pointer<Uint8> Function(
+    Pointer<Void>, Pointer<IntPtr>);
+typedef _GetProposedDart = Pointer<Uint8> Function(
+    Pointer<Void>, Pointer<IntPtr>);
+
+typedef _ProposalDiffNative = IntPtr Function(
+    Pointer<Void>, Pointer<Pointer<CcDiffLine>>);
+typedef _ProposalDiffDart = int Function(
+    Pointer<Void>, Pointer<Pointer<CcDiffLine>>);
+
+typedef _FreeDiffLinesNative = Void Function(Pointer<CcDiffLine>, IntPtr);
+typedef _FreeDiffLinesDart = void Function(Pointer<CcDiffLine>, int);
+
+typedef _AcceptProposalNative = Int32 Function(Pointer<Void>);
+typedef _AcceptProposalDart = int Function(Pointer<Void>);
+
+typedef _SetGhostNative = Int32 Function(
+    Pointer<Void>, IntPtr, Pointer<Uint8>, IntPtr, Uint32);
+typedef _SetGhostDart = int Function(
+    Pointer<Void>, int, Pointer<Uint8>, int, int);
+
+typedef _GetGhostNative = Pointer<Uint8> Function(
+    Pointer<Void>, Pointer<IntPtr>, Pointer<IntPtr>, Pointer<Uint32>);
+typedef _GetGhostDart = Pointer<Uint8> Function(
+    Pointer<Void>, Pointer<IntPtr>, Pointer<IntPtr>, Pointer<Uint32>);
+
+typedef _AcceptGhostNative = Int32 Function(Pointer<Void>, IntPtr);
+typedef _AcceptGhostDart = int Function(Pointer<Void>, int);
+
+typedef _DismissGhostNative = Int32 Function(Pointer<Void>);
+typedef _DismissGhostDart = int Function(Pointer<Void>);
+
+typedef _SnapshotCreateNative = Pointer<Void> Function(Pointer<Void>);
+typedef _SnapshotCreateDart = Pointer<Void> Function(Pointer<Void>);
+
+typedef _SnapshotDestroyNative = Void Function(Pointer<Void>);
+typedef _SnapshotDestroyDart = void Function(Pointer<Void>);
+
+typedef _SnapshotVersionNative = Uint64 Function(Pointer<Void>);
+typedef _SnapshotVersionDart = int Function(Pointer<Void>);
+
+typedef _SnapshotLengthNative = IntPtr Function(Pointer<Void>);
+typedef _SnapshotLengthDart = int Function(Pointer<Void>);
+
+typedef _SnapshotLanguageNative = Int32 Function(Pointer<Void>);
+typedef _SnapshotLanguageDart = int Function(Pointer<Void>);
+
+typedef _SnapshotGetTextNative = Pointer<Uint8> Function(
+    Pointer<Void>, Pointer<IntPtr>);
+typedef _SnapshotGetTextDart = Pointer<Uint8> Function(
+    Pointer<Void>, Pointer<IntPtr>);
+
+typedef _RestoreSnapshotNative = Int32 Function(Pointer<Void>, Pointer<Void>);
+typedef _RestoreSnapshotDart = int Function(Pointer<Void>, Pointer<Void>);
+
 typedef _SetChangeListenerNative = Void Function(
     Pointer<Void>, Pointer<NativeFunction<ChangeCallbackNative>>, Pointer<Void>);
 typedef _SetChangeListenerDart = void Function(
@@ -402,6 +487,12 @@ class CodeCoreBindings {
         'cc_document_is_read_only');
     documentSetReadOnly = library.lookupFunction<_SetReadOnlyNative,
         _SetReadOnlyDart>('cc_document_set_read_only');
+    documentSetEditable = library.lookupFunction<_SetReadOnlyNative,
+        _SetReadOnlyDart>('cc_document_set_editable');
+    documentEditOrigin = library.lookupFunction<_EditOriginNative,
+        _EditOriginDart>('cc_document_edit_origin');
+    documentSetEditOrigin = library.lookupFunction<_SetEditOriginNative,
+        _SetEditOriginDart>('cc_document_set_edit_origin');
     documentTabSize =
         library.lookupFunction<_TabSizeNative, _TabSizeDart>(
             'cc_document_tab_size');
@@ -480,6 +571,42 @@ class CodeCoreBindings {
         library.lookupFunction<_FindNative, _FindDart>('cc_document_find');
     searchRangesFree = library.lookupFunction<_FreeRangesNative,
         _FreeRangesDart>('cc_search_ranges_free');
+    documentSetProposedText = library.lookupFunction<_SetProposedNative,
+        _SetProposedDart>('cc_document_set_proposed_text');
+    documentHasProposal = library.lookupFunction<_HasProposalNative,
+        _HasProposalDart>('cc_document_has_proposal');
+    documentGetProposedText = library.lookupFunction<_GetProposedNative,
+        _GetProposedDart>('cc_document_get_proposed_text');
+    documentProposalDiff = library.lookupFunction<_ProposalDiffNative,
+        _ProposalDiffDart>('cc_document_proposal_diff');
+    diffLinesFree = library.lookupFunction<_FreeDiffLinesNative,
+        _FreeDiffLinesDart>('cc_diff_lines_free');
+    documentAcceptProposal = library.lookupFunction<_AcceptProposalNative,
+        _AcceptProposalDart>('cc_document_accept_proposal');
+    documentRejectProposal = library.lookupFunction<_AcceptProposalNative,
+        _AcceptProposalDart>('cc_document_reject_proposal');
+    documentSetGhostText = library.lookupFunction<_SetGhostNative,
+        _SetGhostDart>('cc_document_set_ghost_text');
+    documentGetGhostText = library.lookupFunction<_GetGhostNative,
+        _GetGhostDart>('cc_document_get_ghost_text');
+    documentAcceptGhostText = library.lookupFunction<_AcceptGhostNative,
+        _AcceptGhostDart>('cc_document_accept_ghost_text');
+    documentDismissGhostText = library.lookupFunction<_DismissGhostNative,
+        _DismissGhostDart>('cc_document_dismiss_ghost_text');
+    snapshotCreate = library.lookupFunction<_SnapshotCreateNative,
+        _SnapshotCreateDart>('cc_document_create_snapshot');
+    snapshotDestroy = library.lookupFunction<_SnapshotDestroyNative,
+        _SnapshotDestroyDart>('cc_snapshot_destroy');
+    snapshotVersion = library.lookupFunction<_SnapshotVersionNative,
+        _SnapshotVersionDart>('cc_snapshot_version');
+    snapshotLength = library.lookupFunction<_SnapshotLengthNative,
+        _SnapshotLengthDart>('cc_snapshot_length');
+    snapshotLanguage = library.lookupFunction<_SnapshotLanguageNative,
+        _SnapshotLanguageDart>('cc_snapshot_language');
+    snapshotGetText = library.lookupFunction<_SnapshotGetTextNative,
+        _SnapshotGetTextDart>('cc_snapshot_get_text');
+    documentRestoreSnapshot = library.lookupFunction<_RestoreSnapshotNative,
+        _RestoreSnapshotDart>('cc_document_restore_snapshot');
     documentSetChangeListener = library.lookupFunction<
         _SetChangeListenerNative,
         _SetChangeListenerDart>('cc_document_set_change_listener');
@@ -507,6 +634,9 @@ class CodeCoreBindings {
   late final _SetLanguageDart documentSetLanguage;
   late final _ReadOnlyDart documentIsReadOnly;
   late final _SetReadOnlyDart documentSetReadOnly;
+  late final _SetReadOnlyDart documentSetEditable;
+  late final _EditOriginDart documentEditOrigin;
+  late final _SetEditOriginDart documentSetEditOrigin;
   late final _TabSizeDart documentTabSize;
   late final _LastErrorDart documentLastError;
   late final _InsertDart documentInsert;
@@ -536,6 +666,24 @@ class CodeCoreBindings {
   late final _FreeFoldingDart foldingRangesFree;
   late final _FindDart documentFind;
   late final _FreeRangesDart searchRangesFree;
+  late final _SetProposedDart documentSetProposedText;
+  late final _HasProposalDart documentHasProposal;
+  late final _GetProposedDart documentGetProposedText;
+  late final _ProposalDiffDart documentProposalDiff;
+  late final _FreeDiffLinesDart diffLinesFree;
+  late final _AcceptProposalDart documentAcceptProposal;
+  late final _AcceptProposalDart documentRejectProposal;
+  late final _SetGhostDart documentSetGhostText;
+  late final _GetGhostDart documentGetGhostText;
+  late final _AcceptGhostDart documentAcceptGhostText;
+  late final _DismissGhostDart documentDismissGhostText;
+  late final _SnapshotCreateDart snapshotCreate;
+  late final _SnapshotDestroyDart snapshotDestroy;
+  late final _SnapshotVersionDart snapshotVersion;
+  late final _SnapshotLengthDart snapshotLength;
+  late final _SnapshotLanguageDart snapshotLanguage;
+  late final _SnapshotGetTextDart snapshotGetText;
+  late final _RestoreSnapshotDart documentRestoreSnapshot;
   late final _SetChangeListenerDart documentSetChangeListener;
 
   Pointer<Uint8> allocate(int bytes) {

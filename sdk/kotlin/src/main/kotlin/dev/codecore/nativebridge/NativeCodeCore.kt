@@ -91,4 +91,79 @@ object NativeCodeCore {
 
     @JvmStatic
     external fun nativeMatchBracket(handle: Long, offset: Int): Int
+
+    @JvmStatic
+    external fun nativeSetEditable(handle: Long, editable: Boolean): Int
+
+    @JvmStatic
+    external fun nativeEditOrigin(handle: Long): Int
+
+    @JvmStatic
+    external fun nativeSetEditOrigin(handle: Long, origin: Int): Int
+
+    @JvmStatic
+    external fun nativeSetProposal(handle: Long, text: String, origin: Int): Int
+
+    @JvmStatic
+    external fun nativeHasProposal(handle: Long): Boolean
+
+    @JvmStatic
+    external fun nativeProposal(handle: Long): String?
+
+    @JvmStatic
+    external fun nativeProposalDiff(handle: Long): Array<String>
+
+    @JvmStatic
+    external fun nativeAcceptProposal(handle: Long): Int
+
+    @JvmStatic
+    external fun nativeRejectProposal(handle: Long): Int
+
+    @JvmStatic
+    external fun nativeSetGhostText(handle: Long, offset: Int, text: String, origin: Int): Int
+
+    @JvmStatic
+    external fun nativeGhostText(handle: Long): String?
+
+    @JvmStatic
+    external fun nativeAcceptGhostText(handle: Long, maxCodePoints: Int): Int
+
+    @JvmStatic
+    external fun nativeDismissGhostText(handle: Long): Int
+
+    @JvmStatic
+    external fun nativeCreateSnapshot(handle: Long): Long
+
+    @JvmStatic
+    external fun nativeSnapshotDestroy(handle: Long)
+
+    @JvmStatic
+    external fun nativeSnapshotVersion(handle: Long): Long
+
+    @JvmStatic
+    external fun nativeSnapshotLength(handle: Long): Long
+
+    @JvmStatic
+    external fun nativeSnapshotLanguage(handle: Long): Int
+
+    @JvmStatic
+    external fun nativeSnapshotText(handle: Long): String
+
+    @JvmStatic
+    external fun nativeRestoreSnapshot(document: Long, snapshot: Long): Int
+
+    @JvmStatic
+    external fun nativeGetSelection(handle: Long): Long
+
+    @JvmStatic
+    external fun nativeSetSelection(handle: Long, anchor: Int, focus: Int): Int
+
+    @JvmStatic
+    external fun nativeMoveCursor(handle: Long, move: Int, extend: Boolean): Int
+
+    @JvmStatic
+    external fun nativeSetLanguage(handle: Long, languageId: Int): Int
+
+    @JvmStatic
+    external fun nativeSetChangeListener(handle: Long, listener: Any?)
 }

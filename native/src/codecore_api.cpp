@@ -142,6 +142,30 @@ cc_range* allocateRanges(const std::vector<codecore::Range>& ranges) {
   return output;
 }
 
+cc_diff_line* allocateDiffLines(const std::vector<codecore::DiffLine>& lines) {
+  if (lines.empty()) {
+    return nullptr;
+  }
+  auto* output = static_cast<cc_diff_line*>(cc_alloc(lines.size() * sizeof(cc_diff_line)));
+  if (!output) {
+    return nullptr;
+  }
+  for (size_t index = 0; index < lines.size(); ++index) {
+    output[index].kind = static_cast<uint32_t>(lines[index].kind);
+    output[index].old_line = lines[index].oldLine;
+    output[index].new_line = lines[index].newLine;
+    output[index].text = duplicateString(lines[index].text);
+    if (!output[index].text) {
+      for (size_t previous = 0; previous < index; ++previous) {
+        cc_free(const_cast<char*>(output[previous].text));
+      }
+      cc_free(output);
+      return nullptr;
+    }
+  }
+  return output;
+}
+
 void documentChangeThunk(void* user_data, const codecore::ChangeEvent* event) {
   auto* wrapper = static_cast<cc_document*>(user_data);
   if (!wrapper || !wrapper->listener) {
@@ -153,6 +177,7 @@ void documentChangeThunk(void* user_data, const codecore::ChangeEvent* event) {
   publicEvent.start = event->start;
   publicEvent.removed_length = event->removedLength;
   publicEvent.inserted_length = event->insertedLength;
+  publicEvent.origin = event->origin;
   wrapper->listener(wrapper->user_data, &publicEvent);
 }
 
@@ -162,7 +187,7 @@ extern "C" {
 
 uint32_t cc_abi_version(void) { return CODECORE_ABI_VERSION; }
 
-const char* cc_version_string(void) { return "0.2.0"; }
+const char* cc_version_string(void) { return "0.3.0"; }
 
 void* cc_alloc(size_t size) { return std::malloc(size == 0 ? 1 : size); }
 
@@ -336,6 +361,27 @@ cc_status cc_document_set_read_only(cc_document* document, uint8_t read_only) {
 
 uint32_t cc_document_tab_size(const cc_document* document) {
   return document && document->document ? document->document->tabSize() : 0;
+}
+
+cc_status cc_document_set_editable(cc_document* document, uint8_t editable) {
+  if (!document || !document->document) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->setReadOnly(editable == 0));
+}
+
+uint32_t cc_document_edit_origin(const cc_document* document) {
+  return document && document->document
+             ? static_cast<uint32_t>(document->document->editOrigin())
+             : 0;
+}
+
+cc_status cc_document_set_edit_origin(cc_document* document, uint32_t origin) {
+  if (!document || !document->document) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->setEditOrigin(
+      static_cast<codecore::EditOrigin>(origin)));
 }
 
 uint8_t cc_document_insert_spaces(const cc_document* document) {
@@ -675,6 +721,128 @@ size_t cc_document_find(const cc_document* document, const char* query, size_t q
 
 void cc_search_ranges_free(cc_range* ranges) { cc_free(ranges); }
 
+cc_status cc_document_set_proposed_text(cc_document* document, const char* utf8,
+                                        size_t length, uint32_t origin) {
+  if (!document || !document->document || (!utf8 && length > 0)) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->setProposedText(
+      std::string_view(utf8 ? utf8 : "", length),
+      static_cast<codecore::EditOrigin>(origin)));
+}
+
+uint8_t cc_document_has_proposal(const cc_document* document) {
+  return document && document->document && document->document->hasProposal() ? 1 : 0;
+}
+
+char* cc_document_get_proposed_text(const cc_document* document, size_t* out_length) {
+  if (out_length) {
+    *out_length = 0;
+  }
+  if (!document || !document->document) {
+    return nullptr;
+  }
+  const std::string text = document->document->proposedText();
+  char* copy = duplicateString(text);
+  if (copy && out_length) {
+    *out_length = text.size();
+  }
+  return copy;
+}
+
+size_t cc_document_proposal_diff(const cc_document* document, cc_diff_line** out_lines) {
+  if (out_lines) {
+    *out_lines = nullptr;
+  }
+  if (!document || !document->document || !out_lines) {
+    return 0;
+  }
+  const std::vector<codecore::DiffLine> lines = document->document->proposalDiff();
+  *out_lines = allocateDiffLines(lines);
+  return lines.size();
+}
+
+void cc_diff_lines_free(cc_diff_line* lines, size_t count) {
+  if (!lines) {
+    return;
+  }
+  for (size_t index = 0; index < count; ++index) {
+    cc_free(const_cast<char*>(lines[index].text));
+  }
+  cc_free(lines);
+}
+
+cc_status cc_document_accept_proposal(cc_document* document) {
+  if (!document || !document->document) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->acceptProposal());
+}
+
+cc_status cc_document_reject_proposal(cc_document* document) {
+  if (!document || !document->document) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->rejectProposal());
+}
+
+cc_status cc_document_set_ghost_text(cc_document* document, size_t offset, const char* utf8,
+                                     size_t length, uint32_t origin) {
+  if (!document || !document->document || (!utf8 && length > 0)) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->setGhostText(
+      offset, std::string_view(utf8 ? utf8 : "", length),
+      static_cast<codecore::EditOrigin>(origin)));
+}
+
+char* cc_document_get_ghost_text(const cc_document* document, size_t* out_offset,
+                                 size_t* out_length, uint32_t* out_origin) {
+  if (out_offset) {
+    *out_offset = 0;
+  }
+  if (out_length) {
+    *out_length = 0;
+  }
+  if (out_origin) {
+    *out_origin = CC_EDIT_ORIGIN_AI;
+  }
+  if (!document || !document->document) {
+    return nullptr;
+  }
+  const codecore::GhostTextState ghost = document->document->ghostText();
+  if (!ghost.active) {
+    return nullptr;
+  }
+  char* copy = duplicateString(ghost.text);
+  if (copy) {
+    if (out_offset) {
+      *out_offset = ghost.offset;
+    }
+    if (out_length) {
+      *out_length = ghost.text.size();
+    }
+    if (out_origin) {
+      *out_origin = static_cast<uint32_t>(ghost.origin);
+    }
+  }
+  return copy;
+}
+
+cc_status cc_document_accept_ghost_text(cc_document* document, size_t max_code_points) {
+  if (!document || !document->document) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->acceptGhostText(max_code_points));
+}
+
+cc_status cc_document_dismiss_ghost_text(cc_document* document) {
+  if (!document || !document->document) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->dismissGhostText());
+}
+
 cc_snapshot* cc_document_create_snapshot(const cc_document* document) {
   if (!document || !document->document) {
     return nullptr;
@@ -795,6 +963,13 @@ size_t cc_snapshot_find(const cc_snapshot* snapshot, const char* query, size_t q
       snapshot->snapshot->find(std::string_view(query, query_length), searchOptions);
   *out_ranges = allocateRanges(ranges);
   return ranges.size();
+}
+
+cc_status cc_document_restore_snapshot(cc_document* document, const cc_snapshot* snapshot) {
+  if (!document || !document->document || !snapshot || !snapshot->snapshot) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->restoreSnapshot(*snapshot->snapshot));
 }
 
 void cc_document_set_change_listener(cc_document* document, cc_change_listener listener,

@@ -17,8 +17,7 @@ namespace codecore {
  *
  * The add buffer is compacted once it grows beyond a threshold relative to the
  * document, which bounds wasted memory for long editing sessions. The buffer is
- * not a rope: materializing text is O(n), which is acceptable for v0.1 and is
- * called out in docs/status.md.
+ * not a rope: materializing text is O(n), which is documented in status.md.
  */
 class TextBuffer {
  public:

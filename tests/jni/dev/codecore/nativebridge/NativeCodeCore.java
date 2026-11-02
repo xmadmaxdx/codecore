@@ -65,4 +65,55 @@ public final class NativeCodeCore {
     public static native int[] nativeFoldingRanges(long handle);
 
     public static native int nativeMatchBracket(long handle, int offset);
+
+    public static native int nativeSetEditable(long handle, boolean editable);
+
+    public static native int nativeEditOrigin(long handle);
+
+    public static native int nativeSetEditOrigin(long handle, int origin);
+
+    public static native int nativeSetProposal(long handle, String text, int origin);
+
+    public static native boolean nativeHasProposal(long handle);
+
+    public static native String nativeProposal(long handle);
+
+    public static native String[] nativeProposalDiff(long handle);
+
+    public static native int nativeAcceptProposal(long handle);
+
+    public static native int nativeRejectProposal(long handle);
+
+    public static native int nativeSetGhostText(
+            long handle, int offset, String text, int origin);
+
+    public static native String nativeGhostText(long handle);
+
+    public static native int nativeAcceptGhostText(long handle, int maxCodePoints);
+
+    public static native int nativeDismissGhostText(long handle);
+
+    public static native long nativeCreateSnapshot(long handle);
+
+    public static native void nativeSnapshotDestroy(long handle);
+
+    public static native long nativeSnapshotVersion(long handle);
+
+    public static native long nativeSnapshotLength(long handle);
+
+    public static native int nativeSnapshotLanguage(long handle);
+
+    public static native String nativeSnapshotText(long handle);
+
+    public static native int nativeRestoreSnapshot(long document, long snapshot);
+
+    public static native long nativeGetSelection(long handle);
+
+    public static native int nativeSetSelection(long handle, int anchor, int focus);
+
+    public static native int nativeMoveCursor(long handle, int move, boolean extend);
+
+    public static native int nativeSetLanguage(long handle, int languageId);
+
+    public static native void nativeSetChangeListener(long handle, Object listener);
 }

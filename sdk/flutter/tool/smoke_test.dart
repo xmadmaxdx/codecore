@@ -31,8 +31,8 @@ void main() {
   CodeCore? core;
   try {
     core = CodeCore.open();
-    check(core.version == '0.2.0', 'native version is 0.2.0');
-    check(core.abiVersion == 2, 'C ABI version is 2');
+    check(core.version == '0.3.0', 'native version is 0.3.0');
+    check(core.abiVersion == 3, 'C ABI version is 3');
     check(core.languageCount == 23, 'language registry has 23 languages');
     check(
       core.languages.any((language) => language.idString == 'python'),
@@ -110,6 +110,66 @@ void main() {
     check(bracketDoc.matchBracket(4 + 1) == null, 'non-bracket returns null');
     bracketDoc.dispose();
 
+    final agentDoc = core.createDocument(language: 'python');
+    agentDoc.text = 'one\ntwo\n';
+    agentDoc.editOrigin = EditOrigin.user;
+    var agentEvents = 0;
+    ChangeEvent? agentEvent;
+    agentDoc.onChange = (event) {
+      agentEvents += 1;
+      agentEvent = event;
+    };
+    agentDoc.insert(0, '# ');
+    check(agentEvents > 0, 'agent document change listener fired');
+    check(agentEvent?.origin == EditOrigin.user, 'change event origin');
+    check(agentDoc.undo(), 'undo user edit');
+
+    agentDoc.setProposal('one\nchanged\nthree\n', origin: EditOrigin.ai);
+    check(agentDoc.hasProposal, 'proposal is stored');
+    check(agentDoc.text == 'one\ntwo\n', 'proposal does not mutate document');
+    final diff = agentDoc.proposalDiff;
+    check(diff.any((line) => line.kind == DiffKind.insert), 'proposal diff has insertions');
+    check(diff.any((line) => line.kind == DiffKind.delete), 'proposal diff has deletions');
+    agentDoc.acceptProposal();
+    check(agentDoc.text == 'one\nchanged\nthree\n', 'proposal acceptance is atomic');
+    check(agentEvent?.kind == ChangeKind.proposalAccepted, 'proposal accepted event');
+    check(agentEvent?.origin == EditOrigin.ai, 'proposal origin is AI');
+    check(agentDoc.undo(), 'proposal acceptance is one undo step');
+    check(agentDoc.text == 'one\ntwo\n', 'undo restores pre-proposal text');
+
+    agentDoc.showGhostText(agentDoc.length, 'return 1', origin: EditOrigin.ai);
+    check(agentDoc.ghostText?.text == 'return 1', 'ghost text is exposed');
+    check(agentDoc.text == 'one\ntwo\n', 'ghost text is not inserted');
+    agentDoc.acceptGhostText(maxCodePoints: 6);
+    check(agentDoc.text.endsWith('return'), 'partial ghost acceptance');
+    check(agentEvent?.kind == ChangeKind.ghostTextAccepted, 'ghost accepted event');
+    agentDoc.undo();
+    agentDoc.showGhostText(0, 'x');
+    agentDoc.dismissGhostText();
+    check(agentDoc.ghostText == null, 'ghost text dismissal');
+
+    final snapshot = agentDoc.createSnapshot();
+    agentDoc.text = 'replacement\n';
+    agentDoc.restoreSnapshot(snapshot);
+    check(agentDoc.text == 'one\ntwo\n', 'snapshot restore');
+    check(agentEvent?.kind == ChangeKind.snapshotRestored, 'snapshot restore event');
+    check(agentDoc.undo(), 'snapshot restore is undoable');
+    check(agentDoc.text == 'replacement\n', 'undo after snapshot restore');
+    snapshot.dispose();
+
+    agentDoc.editable = false;
+    agentDoc.setProposal('blocked\n');
+    var readOnlyFailed = false;
+    try {
+      agentDoc.acceptProposal();
+    } on CodeCoreException {
+      readOnlyFailed = true;
+    }
+    check(readOnlyFailed, 'read-only proposal acceptance is rejected');
+    agentDoc.editable = true;
+    agentDoc.onChange = null;
+    agentDoc.dispose();
+
     var events = 0;
     ChangeEvent? lastEvent;
     document.onChange = (event) {
@@ -119,6 +179,7 @@ void main() {
     document.insert(document.length, '\n');
     check(events == 1, 'change listener fired');
     check(lastEvent?.kind == ChangeKind.insert, 'change kind is insert');
+    check(lastEvent?.origin == EditOrigin.host, 'default origin is host');
     document.onChange = null;
     document.dispose();
 

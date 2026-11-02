@@ -6,11 +6,9 @@ Native build: `native/android/CMakeLists.txt`
 
 ## Design
 
-The Kotlin SDK is a thin, typed layer over the C ABI:
-
 ```text
 CodeCore (object)
-    └── CodeCoreDocument
+    └── CodeCoreDocument / CodeCoreSnapshot
             └── NativeCodeCore (JNI external methods)
                     └── libcodecore_jni.so
                             └── shared C++ core
@@ -22,44 +20,42 @@ supplementary characters (emoji, rare CJK), so they are not used for document
 text.
 
 All offsets are UTF-8 bytes, matching the C ABI and Dart API. Kotlin callers must
-keep byte offsets; `String.length` is UTF-16 code units and is not equivalent
-for non-ASCII documents.
+keep byte offsets; `String.length` is UTF-16 code units.
 
 ## Build
 
-The module uses Android Gradle Plugin 8.7.3, Kotlin 2.1.0, compile SDK 35, min SDK
-24, and the NDK through CMake.
+The module includes the Gradle wrapper (Gradle 9.3.1) and pins Android NDK
+`28.2.13676358`.
 
 ```bash
 cd sdk/kotlin
-gradle :assembleDebug        # requires Android SDK + NDK + Gradle
+# local.properties: sdk.dir=D:/Android
+./gradlew.bat :assembleDebug        # Windows
+./gradlew :assembleDebug            # macOS / Linux
 ```
 
-Gradle then builds `libcodecore_jni.so` from `native/android/CMakeLists.txt`. No
-prebuilt binary is checked in.
+If your NDK is elsewhere, install 28.2.13676358 or update `ndkVersion` in
+`build.gradle.kts`.
 
-The JNI bridge can be built standalone on a desktop with a JDK:
+Verified: `gradlew.bat :assembleDebug` completes successfully, compiling the
+Kotlin SDK and the Android/JNI native sources and producing a debug AAR. The
+module targets JVM 17 bytecode with the installed JDK 21 and pins NDK
+28.2.13676358.
 
-```bash
-cmake -S . -B build/native-jni -DCODECORE_BUILD_JNI=ON -DCODECORE_BUILD_TESTS=OFF
-cmake --build build/native-jni
-```
-
-On Windows this produces `build/native-jni/codecore_jni.dll`.
-
-Because no Kotlin compiler or Gradle installation was available on the
-development machine, the Kotlin module itself has **not** been compiled. The JNI
-ABI it calls is compiled and exercised by `tests/jni/JniSmokeTest.java`:
+The JNI bridge can be built and tested without Kotlin:
 
 ```bash
-mkdir -p build/jni-test
-javac -d build/jni-test \
+cmake -S . -B build/jni -DCODECORE_BUILD_JNI=ON -DCODECORE_BUILD_TESTS=OFF
+cmake --build build/jni --config Release
+
+javac -d build/jni/classes \
   tests/jni/dev/codecore/nativebridge/NativeCodeCore.java \
   tests/jni/JniSmokeTest.java
-java -Djava.library.path=build/native-jni -cp build/jni-test JniSmokeTest
+java -Djava.library.path=build/jni -cp build/jni/classes JniSmokeTest
 ```
 
-Result: 27 checks, 0 failures.
+Result: **72 checks, 0 failures**. The Java harness uses the same JNI symbols the
+Kotlin object declares.
 
 ## Usage
 
@@ -79,45 +75,74 @@ document.text = """
 
 document.insert(document.length.toInt(), "\nprint(total(2, 3))\n")
 
+document.editOrigin = EditOrigin.USER
+document.setSelection(0, 4)
+document.moveCursor(CursorMove.WORD_RIGHT, extendSelection = true)
+
+document.setChangeListener { event ->
+    println("${event.kind} origin=${event.origin} v${event.version}")
+}
+
 document.tokenize().forEach { token ->
     println("${token.start}..${token.end} ${token.kind}")
-}
-
-document.complete().take(10).forEach { item ->
-    println("${item.label} (${item.kind})")
-}
-
-document.diagnose().forEach { diagnostic ->
-    println("${diagnostic.severity}: ${diagnostic.message}")
 }
 
 document.close()
 ```
 
-`CodeCoreDocument` implements `AutoCloseable`; always close documents. Calls are
-synchronized on the instance.
+## Agent-facing API
+
+```kotlin
+// Proposed changes
+document.setProposal("one\nchanged\nthree\n", EditOrigin.AI)
+document.proposalDiff().forEach { line ->
+    println("${line.kind} old=${line.oldLine} new=${line.newLine} ${line.text}")
+}
+document.acceptProposal()   // one undoable edit
+document.rejectProposal()
+
+// Ghost text
+document.showGhostText(document.length.toInt(), "return 1", EditOrigin.AI)
+document.acceptGhostText(maxCodePoints = 6)
+document.dismissGhostText()
+
+// Snapshots
+val snapshot = document.createSnapshot()
+document.text = "temporary\n"
+document.restoreSnapshot(snapshot)
+snapshot.close()
+
+// Permissions and language
+document.editable = false
+document.languageId = 1
+```
+
+`DiffLine.oldLine`/`newLine` are `-1` on the missing side. Ghost text is never
+inserted before acceptance. A snapshot remains valid after its document is
+closed.
 
 ## API surface
 
 - `CodeCore.version`, `CodeCore.createDocument`
-- `CodeCoreDocument.text`, `length`, `version`, `lineCount`, `languageId`,
-  `readOnly`
+- `CodeCoreDocument`: `text`, `length`, `version`, `lineCount`, `languageId`
+  (read/write), `readOnly`, `editable`, `editOrigin`, `selection`, `canUndo`,
+  `canRedo`
 - `insert`, `erase`, `replace`, `undo`, `redo`, `clearHistory`
+- `setSelection`, `moveCursor`, `setChangeListener`
 - `tokenize`, `complete`, `diagnose`, `find`, `foldingRanges`, `matchBracket`
+- `setProposal`, `proposal`, `proposalDiff`, `acceptProposal`, `rejectProposal`,
+  `hasProposal`
+- `showGhostText`, `ghostText`, `acceptGhostText`, `dismissGhostText`
+- `createSnapshot`, `restoreSnapshot`
+- `CodeCoreSnapshot`: `version`, `length`, `languageId`, `text`, `close`
 - `close`
-
-Not exposed yet: selection/cursor movement, change listeners, language switching,
-execution. Those exist in the C ABI and Dart SDK; adding them to the Kotlin
-wrapper is mechanical and belongs with the Android UI milestone.
 
 ## Limitations
 
-- Kotlin module uncompiled (see above).
 - No Compose or Android View widgets yet.
 - Offsets are `Int` in the JNI bridge; the configured document limit is far below
   the 2 GB boundary.
+- Change callbacks run on the mutating thread while the native document is
+  locked. Do not block or close the document inside the callback.
 - No editor rendering, theme integration, or lifecycle-aware controller.
 - No semantic intelligence or execution.
-
-Kotlin UI integration is the next Android milestone, not part of this engine
-release.

@@ -101,6 +101,18 @@ Document::Document(std::shared_ptr<const Language> language, const DocumentOptio
 
 Document::~Document() = default;
 
+bool isValidOrigin(EditOrigin origin) {
+  switch (origin) {
+    case EditOrigin::User:
+    case EditOrigin::Ai:
+    case EditOrigin::Host:
+    case EditOrigin::Formatter:
+    case EditOrigin::ExternalTool:
+      return true;
+  }
+  return false;
+}
+
 Status Document::fail(Status status, const char* message) const {
   lastError_ = message;
   return status;
@@ -140,6 +152,7 @@ Status Document::setText(std::string_view text) {
   if (text.size() > maxDocumentBytes_) {
     return fail(Status::OutOfRange, "document exceeds the configured maximum size");
   }
+  const EditOrigin origin = nextOrigin_;
   buffer_.reset(text);
   textCache_.assign(text.data(), text.size());
   textDirty_ = false;
@@ -147,10 +160,11 @@ Status Document::setText(std::string_view text) {
   analysis_.reset();
   version_ += 1;
   selection_ = Selection{};
+  clearTransientState();
   undoStack_.clear();
   redoStack_.clear();
   lastEditTick_ = 0;
-  emitChange(ChangeKind::SetText, 0, 0, text.size());
+  emitChange(ChangeKind::SetText, 0, 0, text.size(), origin);
   return succeed();
 }
 
@@ -210,6 +224,157 @@ bool Document::insertSpaces() const {
 
 size_t Document::maxDocumentBytes() const { return maxDocumentBytes_; }
 
+EditOrigin Document::editOrigin() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  return nextOrigin_;
+}
+
+Status Document::setEditOrigin(EditOrigin origin) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (!isValidOrigin(origin)) {
+    return fail(Status::InvalidArgument, "unknown edit origin");
+  }
+  nextOrigin_ = origin;
+  return succeed();
+}
+
+Status Document::setProposedText(std::string_view text, EditOrigin origin) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (!isValidOrigin(origin)) {
+    return fail(Status::InvalidArgument, "unknown edit origin");
+  }
+  if (!isValidUtf8(text)) {
+    return fail(Status::InvalidArgument, "proposed text is not valid UTF-8");
+  }
+  if (text.size() > maxDocumentBytes_) {
+    return fail(Status::OutOfRange, "proposed text exceeds the configured maximum size");
+  }
+  proposedText_.assign(text.data(), text.size());
+  hasProposal_ = true;
+  proposalOrigin_ = origin;
+  return succeed();
+}
+
+bool Document::hasProposal() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  return hasProposal_;
+}
+
+std::string Document::proposedText() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  return proposedText_;
+}
+
+std::vector<DiffLine> Document::proposalDiff() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (!hasProposal_) {
+    return {};
+  }
+  return diffLines(currentText(), proposedText_);
+}
+
+Status Document::acceptProposal() {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (!hasProposal_) {
+    return fail(Status::InvalidArgument, "document has no proposed changes");
+  }
+  const std::string proposed = proposedText_;
+  return applyContent(proposed, ChangeKind::ProposalAccepted, proposalOrigin_);
+}
+
+Status Document::rejectProposal() {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (!hasProposal_) {
+    return succeed();
+  }
+  const EditOrigin origin = proposalOrigin_;
+  clearTransientState();
+  emitChange(ChangeKind::ProposalRejected, 0, 0, 0, origin);
+  return succeed();
+}
+
+GhostTextState Document::ghostText() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  return ghost_;
+}
+
+Status Document::setGhostText(size_t offset, std::string_view text, EditOrigin origin) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (!isValidOrigin(origin)) {
+    return fail(Status::InvalidArgument, "unknown edit origin");
+  }
+  if (offset > buffer_.size()) {
+    return fail(Status::OutOfRange, "ghost text offset is outside the document");
+  }
+  if (!isValidUtf8(text)) {
+    return fail(Status::InvalidArgument, "ghost text is not valid UTF-8");
+  }
+  const std::string& existing = currentText();
+  if (offset < existing.size() &&
+      isContinuation(static_cast<unsigned char>(existing[offset]))) {
+    return fail(Status::InvalidArgument, "ghost text offset splits a UTF-8 code point");
+  }
+  if (text.size() > maxDocumentBytes_) {
+    return fail(Status::OutOfRange, "ghost text exceeds the configured maximum size");
+  }
+  ghost_.active = !text.empty();
+  ghost_.offset = offset;
+  ghost_.text.assign(text.data(), text.size());
+  ghost_.origin = origin;
+  return succeed();
+}
+
+Status Document::acceptGhostText(size_t maxCodePoints) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (!ghost_.active) {
+    return fail(Status::InvalidArgument, "document has no ghost text");
+  }
+  if (options_.readOnly) {
+    return fail(Status::ReadOnly, "document is read-only");
+  }
+  if (ghost_.offset > buffer_.size()) {
+    return fail(Status::OutOfRange, "ghost text offset is outside the document");
+  }
+
+  size_t take = ghost_.text.size();
+  if (maxCodePoints > 0) {
+    take = 0;
+    while (take < ghost_.text.size() && maxCodePoints > 0) {
+      take = nextCodepointOffset(ghost_.text, take);
+      --maxCodePoints;
+    }
+  }
+  const std::string inserted = ghost_.text.substr(0, take);
+  const EditOrigin origin = ghost_.origin;
+  const size_t offset = ghost_.offset;
+  ghost_ = GhostTextState{};
+  if (inserted.empty()) {
+    return succeed();
+  }
+  if (buffer_.size() + inserted.size() > maxDocumentBytes_) {
+    return fail(Status::OutOfRange, "document exceeds the configured maximum size");
+  }
+  buffer_.insert(offset, inserted);
+  lineIndex_.applyEdit(offset, offset, inserted);
+  textDirty_ = true;
+  analysis_.reset();
+  version_ += 1;
+  recordEdit(offset, std::string(), inserted, false, origin);
+  emitChange(ChangeKind::GhostTextAccepted, offset, 0, inserted.size(), origin);
+  return succeed();
+}
+
+Status Document::dismissGhostText() {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (!ghost_.active) {
+    return succeed();
+  }
+  const EditOrigin origin = ghost_.origin;
+  ghost_ = GhostTextState{};
+  emitChange(ChangeKind::GhostTextDismissed, 0, 0, 0, origin);
+  return succeed();
+}
+
 Status Document::insert(size_t offset, std::string_view text) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (options_.readOnly) {
@@ -233,13 +398,15 @@ Status Document::insert(size_t offset, std::string_view text) {
     return fail(Status::InvalidArgument, "insert offset splits a UTF-8 code point");
   }
 
+  const EditOrigin origin = nextOrigin_;
+  clearTransientState();
   buffer_.insert(offset, text);
   lineIndex_.applyEdit(offset, offset, text);
   textDirty_ = true;
   analysis_.reset();
   version_ += 1;
-  recordEdit(offset, std::string(), std::string(text), true);
-  emitChange(ChangeKind::Insert, offset, 0, text.size());
+  recordEdit(offset, std::string(), std::string(text), true, origin);
+  emitChange(ChangeKind::Insert, offset, 0, text.size(), origin);
   return succeed();
 }
 
@@ -261,14 +428,16 @@ Status Document::erase(size_t start, size_t end) {
        isContinuation(static_cast<unsigned char>(existing[end])))) {
     return fail(Status::InvalidArgument, "erase range splits a UTF-8 code point");
   }
+  const EditOrigin origin = nextOrigin_;
   const std::string removed = buffer_.slice(start, end - start);
+  clearTransientState();
   buffer_.erase(start, end - start);
   lineIndex_.applyEdit(start, end, std::string_view());
   textDirty_ = true;
   analysis_.reset();
   version_ += 1;
-  recordEdit(start, removed, std::string(), false);
-  emitChange(ChangeKind::Erase, start, removed.size(), 0);
+  recordEdit(start, removed, std::string(), false, origin);
+  emitChange(ChangeKind::Erase, start, removed.size(), 0, origin);
   return succeed();
 }
 
@@ -297,15 +466,17 @@ Status Document::replace(size_t start, size_t end, std::string_view text) {
     return fail(Status::InvalidArgument, "replace range splits a UTF-8 code point");
   }
 
+  const EditOrigin origin = nextOrigin_;
   const std::string removed = buffer_.slice(start, end - start);
+  clearTransientState();
   buffer_.erase(start, end - start);
   buffer_.insert(start, text);
   lineIndex_.applyEdit(start, end, text);
   textDirty_ = true;
   analysis_.reset();
   version_ += 1;
-  recordEdit(start, removed, std::string(text), false);
-  emitChange(ChangeKind::Replace, start, removed.size(), text.size());
+  recordEdit(start, removed, std::string(text), false, origin);
+  emitChange(ChangeKind::Replace, start, removed.size(), text.size(), origin);
   return succeed();
 }
 
@@ -329,6 +500,7 @@ Status Document::undo() {
   }
   EditRecord record = std::move(undoStack_.back());
   undoStack_.pop_back();
+  clearTransientState();
   buffer_.erase(record.offset, record.inserted.size());
   buffer_.insert(record.offset, record.removed);
   lineIndex_.applyEdit(record.offset, record.offset + record.inserted.size(),
@@ -338,7 +510,8 @@ Status Document::undo() {
   redoStack_.push_back(record);
   version_ += 1;
   lastEditTick_ = 0;
-  emitChange(ChangeKind::Undo, record.offset, record.inserted.size(), record.removed.size());
+  emitChange(ChangeKind::Undo, record.offset, record.inserted.size(), record.removed.size(),
+             record.origin);
   return succeed();
 }
 
@@ -352,6 +525,7 @@ Status Document::redo() {
   }
   EditRecord record = std::move(redoStack_.back());
   redoStack_.pop_back();
+  clearTransientState();
   buffer_.erase(record.offset, record.removed.size());
   buffer_.insert(record.offset, record.inserted);
   lineIndex_.applyEdit(record.offset, record.offset + record.removed.size(),
@@ -361,7 +535,8 @@ Status Document::redo() {
   undoStack_.push_back(record);
   version_ += 1;
   lastEditTick_ = 0;
-  emitChange(ChangeKind::Redo, record.offset, record.removed.size(), record.inserted.size());
+  emitChange(ChangeKind::Redo, record.offset, record.removed.size(), record.inserted.size(),
+             record.origin);
   return succeed();
 }
 
@@ -386,7 +561,7 @@ void Document::setHistoryLimit(size_t limit) {
 }
 
 void Document::recordEdit(size_t offset, std::string removed, std::string inserted,
-                          bool coalesce) {
+                          bool coalesce, EditOrigin origin) {
   redoStack_.clear();
   if (historyLimit_ == 0) {
     return;
@@ -397,13 +572,14 @@ void Document::recordEdit(size_t offset, std::string removed, std::string insert
     const bool adjacent = offset == previous.offset + previous.inserted.size();
     const bool recent = lastEditTick_ != 0 && now > lastEditTick_ &&
                         now - lastEditTick_ < 1'000'000'000ull;
-    if (previous.removed.empty() && adjacent && recent && previous.inserted.size() < 256) {
+    if (previous.removed.empty() && adjacent && recent && previous.origin == origin &&
+        previous.inserted.size() < 256) {
       previous.inserted += inserted;
       lastEditTick_ = now;
       return;
     }
   }
-  undoStack_.push_back(EditRecord{offset, std::move(removed), std::move(inserted)});
+  undoStack_.push_back(EditRecord{offset, std::move(removed), std::move(inserted), origin});
   lastEditTick_ = now;
   while (undoStack_.size() > historyLimit_) {
     undoStack_.erase(undoStack_.begin());
@@ -660,6 +836,87 @@ std::shared_ptr<Snapshot> Document::createSnapshot() const {
   return std::make_shared<Snapshot>(currentText(), language_, version_);
 }
 
+Status Document::restoreSnapshot(const Snapshot& snapshot) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (options_.readOnly) {
+    return fail(Status::ReadOnly, "document is read-only");
+  }
+  const EditOrigin origin = nextOrigin_;
+  if (snapshot.language() && snapshot.languageId() != languageId()) {
+    const Status status = setLanguage(snapshot.language());
+    if (status != Status::Ok) {
+      return status;
+    }
+  }
+  return applyContent(snapshot.text(), ChangeKind::SnapshotRestored, origin);
+}
+
+Status Document::applyContent(std::string_view text, ChangeKind kind, EditOrigin origin) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (options_.readOnly) {
+    return fail(Status::ReadOnly, "document is read-only");
+  }
+  if (!isValidUtf8(text)) {
+    return fail(Status::InvalidArgument, "text is not valid UTF-8");
+  }
+  if (text.size() > maxDocumentBytes_) {
+    return fail(Status::OutOfRange, "document exceeds the configured maximum size");
+  }
+
+  const std::string& existing = currentText();
+  if (existing == text) {
+    return succeed();
+  }
+
+  const size_t maxPrefix = std::min(existing.size(), text.size());
+  size_t prefix = 0;
+  while (prefix < maxPrefix && existing[prefix] == text[prefix]) {
+    ++prefix;
+  }
+  while (prefix > 0 &&
+         ((prefix < existing.size() &&
+           isContinuation(static_cast<unsigned char>(existing[prefix]))) ||
+          (prefix < text.size() &&
+           isContinuation(static_cast<unsigned char>(text[prefix]))))) {
+    --prefix;
+  }
+
+  const size_t maxSuffix = std::min(existing.size(), text.size()) - prefix;
+  size_t suffix = 0;
+  while (suffix < maxSuffix &&
+         existing[existing.size() - 1 - suffix] == text[text.size() - 1 - suffix]) {
+    ++suffix;
+  }
+  while (suffix > 0 &&
+         (isContinuation(static_cast<unsigned char>(existing[existing.size() - suffix])) ||
+          isContinuation(static_cast<unsigned char>(text[text.size() - suffix])))) {
+    --suffix;
+  }
+
+  const size_t start = prefix;
+  const size_t oldEnd = existing.size() - suffix;
+  const std::string removed = buffer_.slice(start, oldEnd - start);
+  const std::string inserted(text.substr(prefix, text.size() - prefix - suffix));
+
+  clearTransientState();
+  buffer_.erase(start, oldEnd - start);
+  buffer_.insert(start, inserted);
+  lineIndex_.applyEdit(start, oldEnd, inserted);
+  textDirty_ = true;
+  analysis_.reset();
+  version_ += 1;
+  selection_ = Selection{};
+  recordEdit(start, removed, inserted, false, origin);
+  emitChange(kind, start, removed.size(), inserted.size(), origin);
+  return succeed();
+}
+
+void Document::clearTransientState() {
+  proposedText_.clear();
+  hasProposal_ = false;
+  ghost_ = GhostTextState{};
+}
+
 void Document::setChangeListener(ChangeListener listener, void* userData) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   listener_ = listener;
@@ -671,7 +928,8 @@ const char* Document::lastError() const {
   return lastError_ ? lastError_ : "";
 }
 
-void Document::emitChange(ChangeKind kind, size_t start, size_t removed, size_t inserted) {
+void Document::emitChange(ChangeKind kind, size_t start, size_t removed, size_t inserted,
+                          EditOrigin origin) {
   if (!listener_) {
     return;
   }
@@ -681,6 +939,7 @@ void Document::emitChange(ChangeKind kind, size_t start, size_t removed, size_t 
   event.start = static_cast<uint32_t>(start);
   event.removedLength = static_cast<uint32_t>(removed);
   event.insertedLength = static_cast<uint32_t>(inserted);
+  event.origin = static_cast<uint32_t>(origin);
   listener_(listenerUserData_, &event);
 }
 

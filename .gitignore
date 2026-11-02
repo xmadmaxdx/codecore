@@ -48,3 +48,6 @@ captures/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Gradle NDK intermediate output
+.cxx/

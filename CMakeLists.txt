@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(CodeCore
-  VERSION 0.2.0
+  VERSION 0.3.0
   DESCRIPTION "Embeddable code editor engine"
   LANGUAGES CXX)
 
@@ -20,6 +20,7 @@ set(CODECORE_CORE_SOURCES
   core/document/line_index.cpp
   core/document/document.cpp
   core/analysis/analysis.cpp
+  core/diff/diff.cpp
   core/snapshot/snapshot.cpp
   core/engine/engine.cpp
   native/src/codecore_api.cpp

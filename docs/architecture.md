@@ -1,8 +1,8 @@
 # Architecture
 
-CodeCore v0.1 is the engine foundation. It is deliberately layered so that a
-Flutter UI, a Kotlin Android UI, or a native host can all use the same document
-behavior without sharing C++ implementation details.
+CodeCore v0.3 is the engine foundation. It is deliberately layered so a Flutter
+UI, a Kotlin Android UI or a native host can share document behavior without
+sharing C++ implementation details.
 
 ```text
 Host application (Flutter / Kotlin / C / C++)
@@ -19,11 +19,13 @@ Host application (Flutter / Kotlin / C / C++)
                         ▼
                  core::Document
                  ├── TextBuffer (piece table)
-                 ├── undo / redo records
-                 ├── line index (lazy)
+                 ├── incremental LineIndex
+                 ├── undo / redo records + edit origin
                  ├── selection + cursor
-                 ├── lexer (Level 1 language data)
-                 └── completion / diagnostics / folding / find
+                 ├── proposed text + line diff
+                 ├── ghost-text state
+                 ├── Analysis cache (per version)
+                 └── Snapshot (immutable text + analysis)
 ```
 
 ## Text buffer
@@ -34,120 +36,156 @@ Host application (Flutter / Kotlin / C / C++)
 - Inserted text is appended to a growable add buffer.
 - The document is a sequence of pieces referencing the original or add buffer.
 - Edits split pieces at boundaries and merge adjacent contiguous pieces.
-- The add buffer is compacted once it exceeds both 4 MB and the original
-  document size.
+- The add buffer is compacted once it exceeds both 4 MB and the original size.
 
-This avoids copying the full document on every keystroke. Materializing the
-whole document is still O(n); v0.1 exposes range tokenization but the lexer
-scans from the beginning of the text to preserve multiline state. A rope or
-incremental token cache is future work.
+This avoids copying the whole document on every keystroke. Materializing the
+whole document is still O(n).
+
+## Line index and positions
+
+`LineIndex` stores line-start offsets only. It is rebuilt from the text on a full
+set and updated on each edit by removing starts inside the replaced range,
+shifting later starts and inserting starts for new newlines.
+
+- `lineOfOffset` is binary search.
+- `line(index)` derives `contentEnd` from the current text, excluding `\r\n` or
+  `\n`.
+- Offset-to-position uses code-point counting from the line start.
+- Position-to-offset clamps at `contentEnd`, so columns address line content,
+  not line terminators.
+
+The update is O(number of lines) per edit, not O(1); incremental tokenization and
+a tree-based line index remain future work.
+
+## Analysis cache and snapshots
+
+`Analysis` owns a text copy, a line index and lazily computed lexer, diagnostics
+and folding results. It is immutable after construction.
+
+- `Document` caches one analysis per text version.
+- Repeated tokenize/diagnose/folding/find calls on an unchanged version reuse it.
+- Any edit resets the cache.
+- `Snapshot` carries text, language and version and has its own analysis cache.
+  It remains valid after the document changes or is destroyed, so hosts can run
+  queries on a worker thread without holding the document lock.
+
+Snapshots copy text. They are not structural sharing.
 
 ## Document model
 
-`Document` owns the buffer, language pointer, selection, history and the cached
-line index.
+`Document` owns the buffer, language pointer, selection, history, proposal,
+ghost text and analysis cache.
 
-- Offsets are UTF-8 byte offsets. Edits validate that offsets do not split a
-  UTF-8 code point and that inserted text is valid UTF-8.
-- Lines are stored as `{start, contentEnd, end}`. `contentEnd` excludes the
-  line ending, so `\r\n` is one ending.
-- Columns are measured in Unicode code points.
-- The line index is rebuilt lazily after an edit. It is exact and simple; an
-  incremental index is a later optimization.
-- Every mutating call increments a document version and emits a change event
-  (`set_text`, `insert`, `erase`, `replace`, `undo`, `redo`).
+- Offsets are UTF-8 byte offsets. Edits validate code-point boundaries and UTF-8.
+- Lines are `{start, contentEnd, end}`.
+- Every text mutation increments a version and emits a change event.
+- Read-only mode blocks all text mutations; selection, navigation, querying and
+  proposal preview remain available.
 
-## Undo and redo
+## Undo, redo and edit origins
 
-Each edit records its offset plus the removed and inserted strings.
+Each edit records its offset, removed text, inserted text and `EditOrigin`.
 
-- Adjacent single-character typing is coalesced into one record for up to one
-  second, capped at 256 bytes.
-- Erases are discrete records.
-- The history limit defaults to 200 and is configurable; 0 disables history.
-- A new edit clears the redo stack.
+- Adjacent single-character typing coalesces for up to one second when the origin
+  is unchanged, capped at 256 bytes.
+- Erases are discrete.
+- New edits clear redo.
+- History defaults to 200 entries; 0 disables it.
+- Undo/redo events carry the origin of the record being applied.
+- Proposal acceptance and snapshot restoration compute a minimal replacement
+  range and record one history entry, so each is one undo step.
 
-Storing removed text means a large deletion can hold a large record until it is
-trimmed. That is an accepted v0.1 trade-off and is listed in
-[status.md](status.md).
+## Proposed changes
+
+A proposal is stored separately from document text.
+
+- `setProposedText` validates UTF-8 and size but does not mutate the document.
+- `proposalDiff` computes a line diff between current text and proposed text.
+- `acceptProposal` applies the proposal as a single replacement, records the
+  proposal's origin (AI by default) and emits `proposal_accepted`.
+- `rejectProposal` clears the preview and emits `proposal_rejected`.
+- Normal document edits clear a stale proposal.
+
+`core/diff` uses a bounded LCS table. Inputs beyond 4,000,000 cells or 20,000
+lines fall back to a correct but coarse delete-all/insert-all diff.
+
+## Ghost text
+
+Ghost text is a host-provided inline suggestion with an offset, text and origin.
+It is display state only.
+
+- Setting or reading ghost text never changes document text or version.
+- Acceptance inserts all or a leading code-point count as one undoable edit with
+  the suggestion's origin.
+- Any edit, undo or redo clears ghost text.
+- Read-only documents can display ghost text but cannot accept it.
+
+No AI provider is implemented. The host supplies suggestions.
 
 ## Language layer
 
 `LanguageRegistry` builds 23 immutable language definitions once per engine.
-Documents hold a `shared_ptr<const Language>`, so they remain valid if the
-engine is destroyed.
+Documents hold a `shared_ptr<const Language>`, so they remain valid if the engine
+is destroyed.
 
-The lexer is a table-driven, single-pass tokenizer. It handles:
+The lexer is a table-driven, single-pass tokenizer for comments, strings,
+numbers, keywords, types, builtins, constants, annotations, function calls,
+HTML/XML tags and CSS properties.
 
-- Line and block comments (including Lua's block-comment form).
-- Single, triple and backtick strings.
-- Numbers with common prefixes, exponents and suffixes.
-- Keywords, types, builtins, constants, annotations and function calls.
-- HTML/XML tags, attributes and attribute values.
-- CSS/SCSS property detection inside blocks.
-- Case-insensitive keyword lookup for SQL.
-
-It is explicitly **not** Tree-sitter. It does not build a syntax tree, does not
-understand scopes or types, and cannot provide semantic claims. The public
-capability flags advertise syntax, completion, diagnostics and folding only;
-there is no "semantic" flag.
+It is explicitly **not** Tree-sitter. It does not build a syntax tree or
+understand scopes or types. Capability flags advertise syntax, completion,
+diagnostics and folding only.
 
 ## Language services
 
 - **Completion** merges keywords, types, builtins and document symbols, filters
-  by the identifier prefix at the cursor, and ranks by kind, occurrence count
-  and proximity. If the cursor is inside a comment or string, completion returns
-  no items. Results are capped at 100.
-- **Diagnostics** are conservative: unmatched/mismatched brackets, unclosed
-  brackets, unterminated strings and unterminated block comments. Brackets
-  inside comments and strings are ignored because only punctuation tokens are
-  considered.
-- **Folding** produces brace ranges and multi-line block-comment ranges. It does
-  not implement indentation-based folding yet.
-- **Find** is a literal, case-configurable, whole-word-configurable scan. Regex
-  search is not implemented.
+  by identifier prefix and ranks by kind, occurrence count and proximity. It is
+  suppressed inside comments and strings and capped at 100.
+- **Diagnostics** cover unmatched/unclosed brackets, unterminated strings and
+  unterminated block comments.
+- **Folding** covers brace and multi-line block-comment ranges.
+- **Find** is literal, with case and whole-word options.
 
-All services run synchronously. Hosts should not call them on a UI thread for
-large documents; the next milestone moves them behind an async worker API.
+Analysis is per-version, not incremental. Snapshots move it off the document
+lock, but do not make tokenization incremental.
 
 ## C ABI
 
 `native/include/codecore/codecore.h` is the only supported native boundary.
 
-- `cc_engine` and `cc_document` are opaque.
-- Arrays returned through out-parameters are allocated with `cc_alloc`/`malloc`
-  and freed by the matching `cc_*_free` function.
-- Single strings are freed with `cc_string_free`.
-- Language metadata pointers are owned by the engine.
-- C++ types, exceptions and ownership never cross the boundary.
-
-The implementation wraps core objects in `cc_document` handles that also own the
-language shared references needed for `cc_document_set_language`.
+- Engine, document and snapshot handles are opaque.
+- Returned arrays and strings are allocated through `cc_alloc` and freed with the
+  matching `cc_*_free`.
+- C++ types and exceptions never cross the boundary.
+- The ABI is versioned separately from the library. Current: ABI `3`, library
+  `0.3.0`.
 
 ## Threading
 
-- The language registry is immutable after engine construction.
+- Language metadata is immutable after engine construction.
 - A document serializes calls with a recursive mutex.
-- Change listeners run synchronously on the mutating thread while the document
-  is locked. A listener must not destroy the document and should not block.
-- The Dart FFI SDK installs an isolate-local native callback, so mutations must
-  originate on the same Dart isolate that created the document.
+- Change listeners run synchronously on the mutating thread while the document is
+  locked. They must not destroy the document or block.
+- Snapshots are immutable and may be queried from any thread.
+- Dart callbacks are isolate-local; Kotlin callbacks run on the mutating thread.
 
 ## Platform SDKs
 
-- **Dart** (`sdk/flutter`): hand-written `dart:ffi` bindings; no package
-  dependencies. Native allocation uses `cc_alloc`; UTF-8 conversion happens at
-  the boundary.
-- **Kotlin** (`sdk/kotlin`): JNI bridge with explicit UTF-8 ↔ UTF-16 conversion.
-  The Android library builds `libcodecore_jni.so` from the same core sources.
-  The bridge is compiled and smoke-tested via a Java harness; the Kotlin module
-  itself was not compiled on the development machine.
+- **Dart** (`sdk/flutter`): hand-written `dart:ffi`; no package dependencies.
+  The package includes an Android Gradle/CMake plugin that builds
+  `libcodecore.so` from the shared sources. Publishing needs the native sources
+  vendored into the package or a prebuilt AAR.
+- **Kotlin** (`sdk/kotlin`): JNI bridge with explicit UTF-8/UTF-16 conversion.
+  The Gradle wrapper and NDK version are included. The bridge is compiled and
+  smoke-tested via a Java harness; Kotlin compilation still needs a confirming
+  Gradle run.
 
 ## Why these choices
 
-- **Piece table** gives cheap inserts and an append-only history of edits.
-- **C ABI** keeps Dart and Kotlin independent of the C++ compiler and ABI.
+- **Piece table** gives cheap inserts and append-only edit storage.
+- **Incremental line starts** make position updates cheaper than rescanning text.
+- **Per-version analysis** avoids re-lexing unchanged documents.
+- **Immutable snapshots** let hosts parallelize analysis safely.
+- **C ABI** keeps Dart and Kotlin independent of C++ ABI details.
 - **Lexical Level 1** delivers useful highlighting for 23 languages without
-  shipping grammar binaries; Tree-sitter remains the planned Level 1 upgrade.
-- **Separate engine and language data** lets grammar packs replace the lexer
-  later without changing the public document API.
+  grammar binaries; Tree-sitter remains the planned upgrade.

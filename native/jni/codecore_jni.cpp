@@ -9,8 +9,11 @@
 #include <jni.h>
 
 #include <cstdint>
+#include <mutex>
+#include <new>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "codecore/codecore.h"
@@ -26,6 +29,79 @@ cc_engine* engineInstance() {
 
 cc_document* documentFrom(jlong handle) {
   return reinterpret_cast<cc_document*>(static_cast<intptr_t>(handle));
+}
+
+cc_snapshot* snapshotFrom(jlong handle) {
+  return reinterpret_cast<cc_snapshot*>(static_cast<intptr_t>(handle));
+}
+
+struct JniListener {
+  JavaVM* vm = nullptr;
+  jobject target = nullptr;
+  jmethodID method = nullptr;
+};
+
+std::mutex listenerMutex;
+std::unordered_map<cc_document*, JniListener*> listeners;
+
+void releaseListener(JNIEnv* env, JniListener* listener) {
+  if (!listener) {
+    return;
+  }
+  if (env && listener->target) {
+    env->DeleteGlobalRef(listener->target);
+  }
+  delete listener;
+}
+
+void jniChangeThunk(void* userData, const cc_change_event* event) {
+  auto* listener = static_cast<JniListener*>(userData);
+  if (!listener || !listener->vm || !listener->target || !listener->method) {
+    return;
+  }
+  JNIEnv* env = nullptr;
+  bool attached = false;
+  if (listener->vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_EDETACHED) {
+#if defined(__ANDROID__)
+    if (listener->vm->AttachCurrentThread(&env, nullptr) != JNI_OK) {
+      return;
+    }
+#else
+    if (listener->vm->AttachCurrentThread(reinterpret_cast<void**>(&env), nullptr) != JNI_OK) {
+      return;
+    }
+#endif
+    attached = true;
+  }
+  if (env) {
+    env->CallVoidMethod(listener->target, listener->method, static_cast<jlong>(event->version),
+                        static_cast<jint>(event->kind), static_cast<jint>(event->start),
+                        static_cast<jint>(event->removed_length),
+                        static_cast<jint>(event->inserted_length),
+                        static_cast<jint>(event->origin));
+    if (env->ExceptionCheck()) {
+      env->ExceptionClear();
+    }
+  }
+  if (attached) {
+    listener->vm->DetachCurrentThread();
+  }
+}
+
+void removeListener(JNIEnv* env, cc_document* document) {
+  JniListener* previous = nullptr;
+  {
+    std::lock_guard<std::mutex> guard(listenerMutex);
+    const auto found = listeners.find(document);
+    if (found != listeners.end()) {
+      previous = found->second;
+      listeners.erase(found);
+    }
+  }
+  if (previous) {
+    cc_document_set_change_listener(document, nullptr, nullptr);
+    releaseListener(env, previous);
+  }
 }
 
 void appendUtf8(std::string& out, uint32_t codePoint) {
@@ -132,6 +208,17 @@ std::string completionLine(const cc_completion_item& item) {
   return line;
 }
 
+std::string diffLine(const cc_diff_line& line) {
+  std::string value = std::to_string(line.kind);
+  value.push_back(kFieldSeparator);
+  value += std::to_string(line.old_line);
+  value.push_back(kFieldSeparator);
+  value += std::to_string(line.new_line);
+  value.push_back(kFieldSeparator);
+  value += line.text ? line.text : "";
+  return value;
+}
+
 std::string diagnosticLine(const cc_diagnostic& diagnostic) {
   std::string line = std::to_string(diagnostic.start);
   line.push_back(kFieldSeparator);
@@ -204,8 +291,12 @@ Java_dev_codecore_nativebridge_NativeCodeCore_nativeCreate(JNIEnv* env, jclass,
 }
 
 JNIEXPORT void JNICALL
-Java_dev_codecore_nativebridge_NativeCodeCore_nativeDestroy(JNIEnv*, jclass, jlong handle) {
-  cc_document_destroy(documentFrom(handle));
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeDestroy(JNIEnv* env, jclass, jlong handle) {
+  cc_document* document = documentFrom(handle);
+  if (document) {
+    removeListener(env, document);
+  }
+  cc_document_destroy(document);
 }
 
 JNIEXPORT jint JNICALL
@@ -409,6 +500,250 @@ Java_dev_codecore_nativebridge_NativeCodeCore_nativeMatchBracket(JNIEnv*, jclass
   const cc_status status =
       cc_document_match_bracket(documentFrom(handle), static_cast<size_t>(offset), &match);
   return status == CC_STATUS_OK ? static_cast<jint>(match) : -1;
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSetEditable(JNIEnv*, jclass, jlong handle,
+                                                                jboolean editable) {
+  return static_cast<jint>(
+      cc_document_set_editable(documentFrom(handle), editable ? 1 : 0));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeEditOrigin(JNIEnv*, jclass, jlong handle) {
+  return static_cast<jint>(cc_document_edit_origin(documentFrom(handle)));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSetEditOrigin(JNIEnv*, jclass, jlong handle,
+                                                                  jint origin) {
+  return static_cast<jint>(
+      cc_document_set_edit_origin(documentFrom(handle), static_cast<uint32_t>(origin)));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSetProposal(JNIEnv* env, jclass,
+                                                                jlong handle, jstring text,
+                                                                jint origin) {
+  const std::string value = javaStringToUtf8(env, text);
+  return static_cast<jint>(cc_document_set_proposed_text(
+      documentFrom(handle), value.data(), value.size(), static_cast<uint32_t>(origin)));
+}
+
+JNIEXPORT jboolean JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeHasProposal(JNIEnv*, jclass, jlong handle) {
+  return cc_document_has_proposal(documentFrom(handle)) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jstring JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeProposal(JNIEnv* env, jclass,
+                                                             jlong handle) {
+  size_t length = 0;
+  char* text = cc_document_get_proposed_text(documentFrom(handle), &length);
+  if (!text) {
+    return nullptr;
+  }
+  const std::string value(text, length);
+  cc_string_free(text);
+  return toJavaString(env, value);
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeProposalDiff(JNIEnv* env, jclass,
+                                                                 jlong handle) {
+  cc_diff_line* lines = nullptr;
+  const size_t count = cc_document_proposal_diff(documentFrom(handle), &lines);
+  std::vector<std::string> values;
+  values.reserve(count);
+  for (size_t index = 0; index < count; ++index) {
+    values.push_back(diffLine(lines[index]));
+  }
+  cc_diff_lines_free(lines, count);
+  return stringArray(env, values);
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeAcceptProposal(JNIEnv*, jclass,
+                                                                   jlong handle) {
+  return static_cast<jint>(cc_document_accept_proposal(documentFrom(handle)));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeRejectProposal(JNIEnv*, jclass,
+                                                                   jlong handle) {
+  return static_cast<jint>(cc_document_reject_proposal(documentFrom(handle)));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSetGhostText(JNIEnv* env, jclass,
+                                                                 jlong handle, jint offset,
+                                                                 jstring text, jint origin) {
+  const std::string value = javaStringToUtf8(env, text);
+  return static_cast<jint>(cc_document_set_ghost_text(
+      documentFrom(handle), static_cast<size_t>(offset), value.data(), value.size(),
+      static_cast<uint32_t>(origin)));
+}
+
+JNIEXPORT jstring JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeGhostText(JNIEnv* env, jclass,
+                                                              jlong handle) {
+  size_t offset = 0;
+  size_t length = 0;
+  uint32_t origin = CC_EDIT_ORIGIN_AI;
+  char* text =
+      cc_document_get_ghost_text(documentFrom(handle), &offset, &length, &origin);
+  if (!text) {
+    return nullptr;
+  }
+  std::string value = std::to_string(offset);
+  value.push_back(kFieldSeparator);
+  value += std::to_string(origin);
+  value.push_back(kFieldSeparator);
+  value.append(text, length);
+  cc_string_free(text);
+  return toJavaString(env, value);
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeAcceptGhostText(JNIEnv*, jclass,
+                                                                    jlong handle,
+                                                                    jint maxCodePoints) {
+  return static_cast<jint>(cc_document_accept_ghost_text(
+      documentFrom(handle), static_cast<size_t>(maxCodePoints)));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeDismissGhostText(JNIEnv*, jclass,
+                                                                     jlong handle) {
+  return static_cast<jint>(cc_document_dismiss_ghost_text(documentFrom(handle)));
+}
+
+JNIEXPORT jlong JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeCreateSnapshot(JNIEnv*, jclass,
+                                                                   jlong handle) {
+  return static_cast<jlong>(
+      reinterpret_cast<intptr_t>(cc_document_create_snapshot(documentFrom(handle))));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSnapshotDestroy(JNIEnv*, jclass,
+                                                                    jlong handle) {
+  cc_snapshot_destroy(snapshotFrom(handle));
+}
+
+JNIEXPORT jlong JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSnapshotVersion(JNIEnv*, jclass,
+                                                                    jlong handle) {
+  return static_cast<jlong>(cc_snapshot_version(snapshotFrom(handle)));
+}
+
+JNIEXPORT jlong JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSnapshotLength(JNIEnv*, jclass,
+                                                                   jlong handle) {
+  return static_cast<jlong>(cc_snapshot_length(snapshotFrom(handle)));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSnapshotLanguage(JNIEnv*, jclass,
+                                                                     jlong handle) {
+  return static_cast<jint>(cc_snapshot_language(snapshotFrom(handle)));
+}
+
+JNIEXPORT jstring JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSnapshotText(JNIEnv* env, jclass,
+                                                                 jlong handle) {
+  size_t length = 0;
+  char* text = cc_snapshot_get_text(snapshotFrom(handle), &length);
+  const std::string value(text ? text : "", length);
+  cc_string_free(text);
+  return toJavaString(env, value);
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeRestoreSnapshot(JNIEnv*, jclass,
+                                                                    jlong document,
+                                                                    jlong snapshot) {
+  return static_cast<jint>(cc_document_restore_snapshot(
+      documentFrom(document), snapshotFrom(snapshot)));
+}
+
+JNIEXPORT jlong JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeGetSelection(JNIEnv*, jclass,
+                                                                 jlong handle) {
+  const cc_selection selection = cc_document_get_selection(documentFrom(handle));
+  return static_cast<jlong>((static_cast<uint64_t>(selection.anchor) << 32) |
+                            static_cast<uint64_t>(selection.focus));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSetSelection(JNIEnv*, jclass, jlong handle,
+                                                                 jint anchor, jint focus) {
+  return static_cast<jint>(cc_document_set_selection(
+      documentFrom(handle), static_cast<uint32_t>(anchor), static_cast<uint32_t>(focus)));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeMoveCursor(JNIEnv*, jclass, jlong handle,
+                                                               jint move, jboolean extend) {
+  return static_cast<jint>(cc_document_move_cursor(
+      documentFrom(handle), static_cast<uint32_t>(move), extend ? 1 : 0));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSetLanguage(JNIEnv*, jclass, jlong handle,
+                                                                jint languageId) {
+  return static_cast<jint>(cc_document_set_language(documentFrom(handle), languageId));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSetChangeListener(JNIEnv* env, jclass,
+                                                                      jlong handle,
+                                                                      jobject listener) {
+  cc_document* document = documentFrom(handle);
+  if (!document) {
+    return;
+  }
+
+  JniListener* replacement = nullptr;
+  if (listener) {
+    jclass listenerClass = env->GetObjectClass(listener);
+    if (!listenerClass) {
+      return;
+    }
+    const jmethodID method = env->GetMethodID(listenerClass, "onChange", "(JIIIII)V");
+    env->DeleteLocalRef(listenerClass);
+    if (!method) {
+      env->ExceptionClear();
+      return;
+    }
+    replacement = new (std::nothrow) JniListener();
+    if (!replacement) {
+      return;
+    }
+    env->GetJavaVM(&replacement->vm);
+    replacement->target = env->NewGlobalRef(listener);
+    replacement->method = method;
+    if (!replacement->target) {
+      delete replacement;
+      return;
+    }
+  }
+
+  JniListener* previous = nullptr;
+  {
+    std::lock_guard<std::mutex> guard(listenerMutex);
+    const auto found = listeners.find(document);
+    if (found != listeners.end()) {
+      previous = found->second;
+      listeners.erase(found);
+    }
+    if (replacement) {
+      listeners.emplace(document, replacement);
+    }
+  }
+
+  cc_document_set_change_listener(document, replacement ? jniChangeThunk : nullptr, replacement);
+  releaseListener(env, previous);
 }
 
 }  // extern "C"

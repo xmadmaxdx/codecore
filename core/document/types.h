@@ -24,6 +24,19 @@ enum class ChangeKind : uint32_t {
   Replace = 3,
   Undo = 4,
   Redo = 5,
+  ProposalAccepted = 6,
+  ProposalRejected = 7,
+  SnapshotRestored = 8,
+  GhostTextAccepted = 9,
+  GhostTextDismissed = 10,
+};
+
+enum class EditOrigin : uint32_t {
+  User = 0,
+  Ai = 1,
+  Host = 2,
+  Formatter = 3,
+  ExternalTool = 4,
 };
 
 enum class CursorMove : uint32_t {
@@ -110,6 +123,14 @@ struct ChangeEvent {
   uint32_t start = 0;
   uint32_t removedLength = 0;
   uint32_t insertedLength = 0;
+  uint32_t origin = 0;
+};
+
+struct GhostTextState {
+  bool active = false;
+  size_t offset = 0;
+  std::string text;
+  EditOrigin origin = EditOrigin::Ai;
 };
 
 using ChangeListener = void (*)(void* userData, const ChangeEvent* event);

@@ -37,7 +37,7 @@
  *
  * Language capabilities
  * ---------------------
- * v0.2 ships a lexical (Level 1) language layer: comments, strings, numbers,
+ * v0.3 ships a lexical (Level 1) language layer: comments, strings, numbers,
  * keywords, types and brackets. It is *not* Tree-sitter and makes no semantic
  * claims. See docs/status.md.
  *
@@ -46,6 +46,13 @@
  * Document language services reuse one immutable analysis per text version;
  * repeated tokenize/diagnose/folding calls do not re-lex unchanged text.
  * Snapshots hold their own analysis caches.
+ *
+ * Preview state
+ * -------------
+ * Proposed text and ghost text are preview state. They do not mutate the
+ * document until cc_document_accept_proposal or cc_document_accept_ghost_text
+ * succeeds. Normal edits clear both. Read-only documents may display previews
+ * but cannot commit them.
  */
 
 #ifndef CODECORE_CODECORE_H
@@ -59,9 +66,9 @@ extern "C" {
 #endif
 
 #define CODECORE_VERSION_MAJOR 0
-#define CODECORE_VERSION_MINOR 2
+#define CODECORE_VERSION_MINOR 3
 #define CODECORE_VERSION_PATCH 0
-#define CODECORE_ABI_VERSION 2u
+#define CODECORE_ABI_VERSION 3u
 
 #if defined(_WIN32) && defined(CODECORE_BUILD_SHARED)
 #define CC_API __declspec(dllexport)
@@ -92,8 +99,21 @@ typedef enum cc_change_kind {
   CC_CHANGE_ERASE = 2,
   CC_CHANGE_REPLACE = 3,
   CC_CHANGE_UNDO = 4,
-  CC_CHANGE_REDO = 5
+  CC_CHANGE_REDO = 5,
+  CC_CHANGE_PROPOSAL_ACCEPTED = 6,
+  CC_CHANGE_PROPOSAL_REJECTED = 7,
+  CC_CHANGE_SNAPSHOT_RESTORED = 8,
+  CC_CHANGE_GHOST_TEXT_ACCEPTED = 9,
+  CC_CHANGE_GHOST_TEXT_DISMISSED = 10
 } cc_change_kind;
+
+typedef enum cc_edit_origin {
+  CC_EDIT_ORIGIN_USER = 0,
+  CC_EDIT_ORIGIN_AI = 1,
+  CC_EDIT_ORIGIN_HOST = 2,
+  CC_EDIT_ORIGIN_FORMATTER = 3,
+  CC_EDIT_ORIGIN_EXTERNAL_TOOL = 4
+} cc_edit_origin;
 
 typedef enum cc_token_kind {
   CC_TOKEN_PLAIN = 0,
@@ -237,7 +257,15 @@ typedef struct cc_change_event {
   uint32_t start;
   uint32_t removed_length;
   uint32_t inserted_length;
+  uint32_t origin;
 } cc_change_event;
+
+typedef struct cc_diff_line {
+  uint32_t kind;
+  uint32_t old_line;
+  uint32_t new_line;
+  const char* text;
+} cc_diff_line;
 
 typedef void (*cc_change_listener)(void* user_data, const cc_change_event* event);
 
@@ -266,6 +294,9 @@ CC_API int32_t cc_document_language(const cc_document* document);
 CC_API cc_status cc_document_set_language(cc_document* document, int32_t language_id);
 CC_API uint8_t cc_document_is_read_only(const cc_document* document);
 CC_API cc_status cc_document_set_read_only(cc_document* document, uint8_t read_only);
+CC_API cc_status cc_document_set_editable(cc_document* document, uint8_t editable);
+CC_API uint32_t cc_document_edit_origin(const cc_document* document);
+CC_API cc_status cc_document_set_edit_origin(cc_document* document, uint32_t origin);
 CC_API uint32_t cc_document_tab_size(const cc_document* document);
 CC_API uint8_t cc_document_insert_spaces(const cc_document* document);
 CC_API const char* cc_document_last_error(const cc_document* document);
@@ -308,6 +339,24 @@ CC_API size_t cc_document_find(const cc_document* document, const char* query, s
                                const cc_search_options* options, cc_range** out_ranges);
 CC_API void cc_search_ranges_free(cc_range* ranges);
 
+/* Proposed changes. Preview text never mutates the document. */
+CC_API cc_status cc_document_set_proposed_text(cc_document* document, const char* utf8,
+                                               size_t length, uint32_t origin);
+CC_API uint8_t cc_document_has_proposal(const cc_document* document);
+CC_API char* cc_document_get_proposed_text(const cc_document* document, size_t* out_length);
+CC_API size_t cc_document_proposal_diff(const cc_document* document, cc_diff_line** out_lines);
+CC_API void cc_diff_lines_free(cc_diff_line* lines, size_t count);
+CC_API cc_status cc_document_accept_proposal(cc_document* document);
+CC_API cc_status cc_document_reject_proposal(cc_document* document);
+
+/* Ghost text. The suggestion is not inserted until accepted. */
+CC_API cc_status cc_document_set_ghost_text(cc_document* document, size_t offset,
+                                            const char* utf8, size_t length, uint32_t origin);
+CC_API char* cc_document_get_ghost_text(const cc_document* document, size_t* out_offset,
+                                        size_t* out_length, uint32_t* out_origin);
+CC_API cc_status cc_document_accept_ghost_text(cc_document* document, size_t max_code_points);
+CC_API cc_status cc_document_dismiss_ghost_text(cc_document* document);
+
 /* Immutable snapshots. Queries are thread-safe for a given snapshot. */
 CC_API cc_snapshot* cc_document_create_snapshot(const cc_document* document);
 CC_API void cc_snapshot_destroy(cc_snapshot* snapshot);
@@ -326,6 +375,8 @@ CC_API size_t cc_snapshot_folding_ranges(const cc_snapshot* snapshot,
 CC_API size_t cc_snapshot_find(const cc_snapshot* snapshot, const char* query,
                                size_t query_length, const cc_search_options* options,
                                cc_range** out_ranges);
+CC_API cc_status cc_document_restore_snapshot(cc_document* document,
+                                             const cc_snapshot* snapshot);
 
 /* Change notifications. */
 CC_API void cc_document_set_change_listener(cc_document* document, cc_change_listener listener, void* user_data);

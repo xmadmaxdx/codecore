@@ -35,14 +35,165 @@ class CodeCoreDocument internal constructor(initialHandle: Long) : AutoCloseable
     val lineCount: Long
         get() = synchronized(lock) { NativeCodeCore.nativeLineCount(nativeHandle()) }
 
-    val languageId: Int
+    var languageId: Int
         get() = synchronized(lock) { NativeCodeCore.nativeLanguageId(nativeHandle()) }
+        set(value) = synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeSetLanguage(nativeHandle(), value))
+        }
 
     var readOnly: Boolean
         get() = synchronized(lock) { NativeCodeCore.nativeIsReadOnly(nativeHandle()) }
         set(value) = synchronized(lock) {
             checkStatus(NativeCodeCore.nativeSetReadOnly(nativeHandle(), value))
         }
+
+    var editable: Boolean
+        get() = !readOnly
+        set(value) = synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeSetEditable(nativeHandle(), value))
+        }
+
+    var editOrigin: EditOrigin
+        get() = synchronized(lock) {
+            EditOrigin.fromNative(NativeCodeCore.nativeEditOrigin(nativeHandle()))
+        }
+        set(value) = synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeSetEditOrigin(nativeHandle(), value.nativeValue))
+        }
+
+    val hasProposal: Boolean
+        get() = synchronized(lock) { NativeCodeCore.nativeHasProposal(nativeHandle()) }
+
+    /** Preview content; it does not change [text] until [acceptProposal]. */
+    fun setProposal(value: String, origin: EditOrigin = EditOrigin.AI) {
+        synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeSetProposal(nativeHandle(), value, origin.nativeValue))
+        }
+    }
+
+    fun proposal(): String? = synchronized(lock) {
+        NativeCodeCore.nativeProposal(nativeHandle())
+    }
+
+    fun proposalDiff(): List<DiffLine> = synchronized(lock) {
+        NativeCodeCore.nativeProposalDiff(nativeHandle()).mapNotNull { line ->
+            val parts = line.split(SEPARATOR, limit = 4)
+            if (parts.size != 4) {
+                null
+            } else {
+                DiffLine(
+                    kind = DiffKind.fromNative(parts[0].toIntOrNull() ?: 0),
+                    oldLine = parts[1].toIntOrNull() ?: -1,
+                    newLine = parts[2].toIntOrNull() ?: -1,
+                    text = parts[3],
+                )
+            }
+        }
+    }
+
+    fun acceptProposal() {
+        synchronized(lock) { checkStatus(NativeCodeCore.nativeAcceptProposal(nativeHandle())) }
+    }
+
+    fun rejectProposal() {
+        synchronized(lock) { checkStatus(NativeCodeCore.nativeRejectProposal(nativeHandle())) }
+    }
+
+    fun ghostText(): GhostText? = synchronized(lock) {
+        val line = NativeCodeCore.nativeGhostText(nativeHandle())
+        if (line == null) {
+            null
+        } else {
+            val parts = line.split(SEPARATOR, limit = 3)
+            if (parts.size != 3) {
+                null
+            } else {
+                GhostText(
+                    offset = parts[0].toIntOrNull() ?: 0,
+                    origin = EditOrigin.fromNative(parts[1].toIntOrNull() ?: 1),
+                    text = parts[2],
+                )
+            }
+        }
+    }
+
+    fun showGhostText(offset: Int, value: String, origin: EditOrigin = EditOrigin.AI) {
+        synchronized(lock) {
+            checkStatus(
+                NativeCodeCore.nativeSetGhostText(
+                    nativeHandle(),
+                    offset,
+                    value,
+                    origin.nativeValue,
+                ),
+            )
+        }
+    }
+
+    /** Accepts all ghost text, or only [maxCodePoints] leading code points. */
+    fun acceptGhostText(maxCodePoints: Int = 0) {
+        synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeAcceptGhostText(nativeHandle(), maxCodePoints))
+        }
+    }
+
+    fun dismissGhostText() {
+        synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeDismissGhostText(nativeHandle()))
+        }
+    }
+
+    fun createSnapshot(): CodeCoreSnapshot {
+        synchronized(lock) {
+            val snapshot = NativeCodeCore.nativeCreateSnapshot(nativeHandle())
+            check(snapshot != 0L) { "snapshot creation failed" }
+            return CodeCoreSnapshot(snapshot)
+        }
+    }
+
+    fun restoreSnapshot(snapshot: CodeCoreSnapshot) {
+        synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeRestoreSnapshot(nativeHandle(), snapshot.nativeHandle()))
+        }
+    }
+
+    val selection: Selection
+        get() = synchronized(lock) {
+            val packed = NativeCodeCore.nativeGetSelection(nativeHandle())
+            Selection(
+                anchor = (packed ushr 32).toInt(),
+                focus = packed.toInt(),
+            )
+        }
+
+    fun setSelection(anchor: Int, focus: Int) {
+        synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeSetSelection(nativeHandle(), anchor, focus))
+        }
+    }
+
+    fun moveCursor(move: CursorMove, extendSelection: Boolean = false) {
+        synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeMoveCursor(nativeHandle(), move.nativeValue, extendSelection))
+        }
+    }
+
+    /** Installs a synchronous change listener. Pass null to detach. */
+    fun setChangeListener(listener: CodeCoreChangeListener?) {
+        synchronized(lock) {
+            if (handle == 0L) {
+                return
+            }
+            NativeCodeCore.nativeSetChangeListener(handle, null)
+            changeListenerAdapter = null
+            if (listener == null) {
+                return
+            }
+            val adapter = ListenerAdapter(listener)
+            changeListenerAdapter = adapter
+            NativeCodeCore.nativeSetChangeListener(handle, adapter)
+        }
+    }
 
     val canUndo: Boolean
         get() = synchronized(lock) { NativeCodeCore.nativeCanUndo(nativeHandle()) }
@@ -205,6 +356,8 @@ class CodeCoreDocument internal constructor(initialHandle: Long) : AutoCloseable
             if (handle == 0L) {
                 return
             }
+            NativeCodeCore.nativeSetChangeListener(handle, null)
+            changeListenerAdapter = null
             NativeCodeCore.nativeDestroy(handle)
             handle = 0
         }
@@ -228,7 +381,44 @@ class CodeCoreDocument internal constructor(initialHandle: Long) : AutoCloseable
         )
     }
 
+    private var changeListenerAdapter: NativeChangeListener? = null
+
+    private class ListenerAdapter(
+        private val callback: CodeCoreChangeListener,
+    ) : NativeChangeListener {
+        override fun onChange(
+            version: Long,
+            kind: Int,
+            start: Int,
+            removedLength: Int,
+            insertedLength: Int,
+            origin: Int,
+        ) {
+            callback.onChange(
+                ChangeEvent(
+                    version = version,
+                    kind = ChangeKind.fromNative(kind),
+                    start = start,
+                    removedLength = removedLength,
+                    insertedLength = insertedLength,
+                    origin = EditOrigin.fromNative(origin),
+                ),
+            )
+        }
+    }
+
     private companion object {
         const val SEPARATOR = '\u001F'
     }
+}
+
+internal interface NativeChangeListener {
+    fun onChange(
+        version: Long,
+        kind: Int,
+        start: Int,
+        removedLength: Int,
+        insertedLength: Int,
+        origin: Int,
+    )
 }

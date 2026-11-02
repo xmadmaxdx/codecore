@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core/analysis/analysis.h"
+#include "core/diff/diff.h"
 #include "core/document/line_index.h"
 #include "core/document/types.h"
 #include "core/language/language.h"
@@ -56,6 +57,23 @@ class Document {
   Status erase(size_t start, size_t end);
   Status replace(size_t start, size_t end, std::string_view text);
 
+  EditOrigin editOrigin() const;
+  Status setEditOrigin(EditOrigin origin);
+
+  /* Proposed content is preview-only until acceptProposal() commits it. */
+  Status setProposedText(std::string_view text, EditOrigin origin);
+  bool hasProposal() const;
+  std::string proposedText() const;
+  std::vector<DiffLine> proposalDiff() const;
+  Status acceptProposal();
+  Status rejectProposal();
+
+  /* Ghost text never enters the document until it is accepted. */
+  GhostTextState ghostText() const;
+  Status setGhostText(size_t offset, std::string_view text, EditOrigin origin);
+  Status acceptGhostText(size_t maxCodePoints);
+  Status dismissGhostText();
+
   bool canUndo() const;
   bool canRedo() const;
   Status undo();
@@ -81,6 +99,7 @@ class Document {
 
   /* Captures text, language and version for lock-free analysis elsewhere. */
   std::shared_ptr<Snapshot> createSnapshot() const;
+  Status restoreSnapshot(const Snapshot& snapshot);
 
   void setChangeListener(ChangeListener listener, void* userData);
   const char* lastError() const;
@@ -90,12 +109,17 @@ class Document {
     size_t offset = 0;
     std::string removed;
     std::string inserted;
+    EditOrigin origin = EditOrigin::Host;
   };
 
   Status fail(Status status, const char* message) const;
   Status succeed() const;
-  void emitChange(ChangeKind kind, size_t start, size_t removed, size_t inserted);
-  void recordEdit(size_t offset, std::string removed, std::string inserted, bool coalesce);
+  Status applyContent(std::string_view text, ChangeKind kind, EditOrigin origin);
+  void clearTransientState();
+  void emitChange(ChangeKind kind, size_t start, size_t removed, size_t inserted,
+                  EditOrigin origin);
+  void recordEdit(size_t offset, std::string removed, std::string inserted, bool coalesce,
+                  EditOrigin origin);
   const std::string& currentText() const;
   std::shared_ptr<Analysis> currentAnalysis() const;
 
@@ -113,7 +137,12 @@ class Document {
   mutable int32_t analysisLanguageId_ = -1;
 
   uint64_t version_ = 0;
+  EditOrigin nextOrigin_ = EditOrigin::Host;
   Selection selection_;
+  std::string proposedText_;
+  bool hasProposal_ = false;
+  EditOrigin proposalOrigin_ = EditOrigin::Ai;
+  GhostTextState ghost_;
   std::vector<EditRecord> undoStack_;
   std::vector<EditRecord> redoStack_;
   size_t historyLimit_ = 200;

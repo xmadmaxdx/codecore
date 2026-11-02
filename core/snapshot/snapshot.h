@@ -28,6 +28,7 @@ class Snapshot {
   uint64_t version() const { return version_; }
   size_t length() const { return text_.size(); }
   const std::string& text() const { return text_; }
+  std::shared_ptr<const Language> language() const { return language_; }
   int32_t languageId() const;
 
   std::shared_ptr<const Analysis> analysis() const;

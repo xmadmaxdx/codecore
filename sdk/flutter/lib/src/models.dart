@@ -78,13 +78,51 @@ enum ChangeKind {
   erase,
   replace,
   undo,
-  redo;
+  redo,
+  proposalAccepted,
+  proposalRejected,
+  snapshotRestored,
+  ghostTextAccepted,
+  ghostTextDismissed;
 
   static ChangeKind fromNative(int value) {
     if (value < 0 || value >= ChangeKind.values.length) {
       return ChangeKind.setText;
     }
     return ChangeKind.values[value];
+  }
+}
+
+enum EditOrigin {
+  user(0),
+  ai(1),
+  host(2),
+  formatter(3),
+  externalTool(4);
+
+  const EditOrigin(this.nativeValue);
+  final int nativeValue;
+
+  static EditOrigin fromNative(int value) {
+    for (final origin in EditOrigin.values) {
+      if (origin.nativeValue == value) {
+        return origin;
+      }
+    }
+    return EditOrigin.host;
+  }
+}
+
+enum DiffKind {
+  equal,
+  insert,
+  delete;
+
+  static DiffKind fromNative(int value) {
+    if (value < 0 || value >= DiffKind.values.length) {
+      return DiffKind.equal;
+    }
+    return DiffKind.values[value];
   }
 }
 
@@ -227,6 +265,7 @@ class ChangeEvent {
     required this.start,
     required this.removedLength,
     required this.insertedLength,
+    required this.origin,
   });
 
   final int version;
@@ -234,4 +273,33 @@ class ChangeEvent {
   final int start;
   final int removedLength;
   final int insertedLength;
+  final EditOrigin origin;
+}
+
+/// Host-provided inline completion. It is display state only until accepted.
+class GhostText {
+  const GhostText({
+    required this.offset,
+    required this.text,
+    required this.origin,
+  });
+
+  final int offset;
+  final String text;
+  final EditOrigin origin;
+}
+
+/// One line of a line-oriented diff. A missing side is represented by -1.
+class DiffLine {
+  const DiffLine({
+    required this.kind,
+    required this.oldLine,
+    required this.newLine,
+    required this.text,
+  });
+
+  final DiffKind kind;
+  final int oldLine;
+  final int newLine;
+  final String text;
 }
