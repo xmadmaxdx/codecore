@@ -27,7 +27,7 @@ Implemented and tested:
 | Literal find (case, whole-word) | Implemented, tested |
 | C ABI with explicit ownership and change events | Implemented, tested |
 | Dart FFI SDK | Implemented, tested |
-| Kotlin JNI bridge | Sources present, not built on this machine |
+| Kotlin JNI bridge | Compiled; Java smoke test passes; Kotlin module not compiled (no Kotlin/Gradle toolchain) |
 
 Not implemented yet — see [docs/status.md](docs/status.md) for the honest matrix:
 
@@ -76,6 +76,35 @@ cmake --build build/native -j
 ```
 
 The native suite currently runs **446 checks with 0 failures** and CTest passes.
+
+### JNI bridge
+
+```bash
+cmake -S . -B build/native-jni -G "MinGW Makefiles" \
+  -DCODECORE_BUILD_JNI=ON -DCODECORE_BUILD_TESTS=OFF
+cmake --build build/native-jni
+
+mkdir -p build/jni-test
+javac -d build/jni-test \
+  tests/jni/dev/codecore/nativebridge/NativeCodeCore.java \
+  tests/jni/JniSmokeTest.java
+java -Djava.library.path=build/native-jni -cp build/jni-test JniSmokeTest
+```
+
+It exercises the same entry points the Kotlin wrapper declares, without
+requiring Kotlin tooling. See [docs/kotlin.md](docs/kotlin.md).
+
+## Verification
+
+| Check | Result |
+|---|---|
+| Native engine tests | 446 checks, 0 failures |
+| CTest | 1/1 passed |
+| Dart static analysis | No issues |
+| Dart FFI smoke test | 38 checks, 0 failures |
+| JNI smoke test (Java) | 27 checks, 0 failures |
+| Kotlin module compile | Not run — no Kotlin/Gradle toolchain installed |
+| Performance benchmarks | Not run — no claims made |
 
 ## Use from Dart
 
