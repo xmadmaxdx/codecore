@@ -1,3 +1,7 @@
+# Local planning and agent notes (kept on disk, not tracked)
+AGENTS.md
+Plan.md
+
 # Build output
 build/
 cmake-build-*/
