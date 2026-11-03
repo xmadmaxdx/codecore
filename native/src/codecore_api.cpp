@@ -689,6 +689,35 @@ size_t cc_document_folding_ranges(const cc_document* document, cc_folding_range*
 
 void cc_folding_ranges_free(cc_folding_range* ranges) { cc_free(ranges); }
 
+cc_status cc_document_search(const cc_document* document, const char* query,
+                             size_t query_length, const cc_search_options* options,
+                             cc_range** out_ranges, size_t* out_count) {
+  if (out_ranges) {
+    *out_ranges = nullptr;
+  }
+  if (out_count) {
+    *out_count = 0;
+  }
+  if (!document || !document->document || !query || !out_ranges || !out_count) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  codecore::SearchOptions searchOptions;
+  if (options) {
+    searchOptions.caseSensitive = options->case_sensitive != 0;
+    searchOptions.wholeWord = options->whole_word != 0;
+    searchOptions.regex = options->regex != 0;
+  }
+  std::vector<codecore::Range> ranges;
+  const cc_status status = mapStatus(
+      document->document->find(std::string_view(query, query_length), searchOptions, &ranges));
+  if (status != CC_STATUS_OK) {
+    return status;
+  }
+  *out_ranges = allocateRanges(ranges);
+  *out_count = ranges.size();
+  return CC_STATUS_OK;
+}
+
 size_t cc_document_find(const cc_document* document, const char* query, size_t query_length,
                         const cc_search_options* options, cc_range** out_ranges) {
   if (out_ranges) {
@@ -697,26 +726,14 @@ size_t cc_document_find(const cc_document* document, const char* query, size_t q
   if (!document || !document->document || !query || !out_ranges) {
     return 0;
   }
-  codecore::SearchOptions searchOptions;
-  if (options) {
-    searchOptions.caseSensitive = options->case_sensitive != 0;
-    searchOptions.wholeWord = options->whole_word != 0;
-  }
-  const std::vector<codecore::Range> ranges =
-      document->document->find(std::string_view(query, query_length), searchOptions);
-  if (ranges.empty()) {
+  cc_range* ranges = nullptr;
+  size_t count = 0;
+  if (cc_document_search(document, query, query_length, options, &ranges, &count) !=
+      CC_STATUS_OK) {
     return 0;
   }
-  auto* output = static_cast<cc_range*>(cc_alloc(ranges.size() * sizeof(cc_range)));
-  if (!output) {
-    return 0;
-  }
-  for (size_t index = 0; index < ranges.size(); ++index) {
-    output[index].start = ranges[index].start;
-    output[index].end = ranges[index].end;
-  }
-  *out_ranges = output;
-  return ranges.size();
+  *out_ranges = ranges;
+  return count;
 }
 
 void cc_search_ranges_free(cc_range* ranges) { cc_free(ranges); }
@@ -946,6 +963,35 @@ size_t cc_snapshot_folding_ranges(const cc_snapshot* snapshot,
   return ranges.size();
 }
 
+cc_status cc_snapshot_search(const cc_snapshot* snapshot, const char* query,
+                             size_t query_length, const cc_search_options* options,
+                             cc_range** out_ranges, size_t* out_count) {
+  if (out_ranges) {
+    *out_ranges = nullptr;
+  }
+  if (out_count) {
+    *out_count = 0;
+  }
+  if (!snapshot || !snapshot->snapshot || !query || !out_ranges || !out_count) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  codecore::SearchOptions searchOptions;
+  if (options) {
+    searchOptions.caseSensitive = options->case_sensitive != 0;
+    searchOptions.wholeWord = options->whole_word != 0;
+    searchOptions.regex = options->regex != 0;
+  }
+  std::vector<codecore::Range> ranges;
+  const cc_status status = mapStatus(
+      snapshot->snapshot->find(std::string_view(query, query_length), searchOptions, &ranges));
+  if (status != CC_STATUS_OK) {
+    return status;
+  }
+  *out_ranges = allocateRanges(ranges);
+  *out_count = ranges.size();
+  return CC_STATUS_OK;
+}
+
 size_t cc_snapshot_find(const cc_snapshot* snapshot, const char* query, size_t query_length,
                         const cc_search_options* options, cc_range** out_ranges) {
   if (out_ranges) {
@@ -954,15 +1000,14 @@ size_t cc_snapshot_find(const cc_snapshot* snapshot, const char* query, size_t q
   if (!snapshot || !snapshot->snapshot || !query || !out_ranges) {
     return 0;
   }
-  codecore::SearchOptions searchOptions;
-  if (options) {
-    searchOptions.caseSensitive = options->case_sensitive != 0;
-    searchOptions.wholeWord = options->whole_word != 0;
+  cc_range* ranges = nullptr;
+  size_t count = 0;
+  if (cc_snapshot_search(snapshot, query, query_length, options, &ranges, &count) !=
+      CC_STATUS_OK) {
+    return 0;
   }
-  const std::vector<codecore::Range> ranges =
-      snapshot->snapshot->find(std::string_view(query, query_length), searchOptions);
-  *out_ranges = allocateRanges(ranges);
-  return ranges.size();
+  *out_ranges = ranges;
+  return count;
 }
 
 cc_status cc_document_restore_snapshot(cc_document* document, const cc_snapshot* snapshot) {

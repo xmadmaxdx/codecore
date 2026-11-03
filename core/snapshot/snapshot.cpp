@@ -34,9 +34,9 @@ std::vector<FoldingRange> Snapshot::foldingRanges() const {
   return analysis()->foldingRanges();
 }
 
-std::vector<Range> Snapshot::find(std::string_view query,
-                                  const SearchOptions& options) const {
-  return analysis()->find(query, options);
+Status Snapshot::find(std::string_view query, const SearchOptions& options,
+                      std::vector<Range>* out) const {
+  return analysis()->find(query, options, out);
 }
 
 }  // namespace codecore

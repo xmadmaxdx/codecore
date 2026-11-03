@@ -84,7 +84,8 @@ object NativeCodeCore {
         query: String,
         caseSensitive: Boolean,
         wholeWord: Boolean,
-    ): IntArray
+        regex: Boolean,
+    ): LongArray
 
     @JvmStatic
     external fun nativeFoldingRanges(handle: Long): IntArray

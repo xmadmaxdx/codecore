@@ -141,6 +141,9 @@ final class CcSearchOptions extends Struct {
 
   @Uint8()
   external int wholeWord;
+
+  @Uint8()
+  external int regex;
 }
 
 final class CcDiffLine extends Struct {
@@ -352,18 +355,20 @@ typedef _FoldingDart = int Function(
 typedef _FreeFoldingNative = Void Function(Pointer<CcFoldingRange>);
 typedef _FreeFoldingDart = void Function(Pointer<CcFoldingRange>);
 
-typedef _FindNative = IntPtr Function(
+typedef _SearchNative = Int32 Function(
     Pointer<Void>,
     Pointer<Uint8>,
     IntPtr,
     Pointer<CcSearchOptions>,
-    Pointer<Pointer<CcRange>>);
-typedef _FindDart = int Function(
+    Pointer<Pointer<CcRange>>,
+    Pointer<IntPtr>);
+typedef _SearchDart = int Function(
     Pointer<Void>,
     Pointer<Uint8>,
     int,
     Pointer<CcSearchOptions>,
-    Pointer<Pointer<CcRange>>);
+    Pointer<Pointer<CcRange>>,
+    Pointer<IntPtr>);
 
 typedef _FreeRangesNative = Void Function(Pointer<CcRange>);
 typedef _FreeRangesDart = void Function(Pointer<CcRange>);
@@ -567,8 +572,8 @@ class CodeCoreBindings {
             'cc_document_folding_ranges');
     foldingRangesFree = library.lookupFunction<_FreeFoldingNative,
         _FreeFoldingDart>('cc_folding_ranges_free');
-    documentFind =
-        library.lookupFunction<_FindNative, _FindDart>('cc_document_find');
+    documentSearch =
+        library.lookupFunction<_SearchNative, _SearchDart>('cc_document_search');
     searchRangesFree = library.lookupFunction<_FreeRangesNative,
         _FreeRangesDart>('cc_search_ranges_free');
     documentSetProposedText = library.lookupFunction<_SetProposedNative,
@@ -664,7 +669,7 @@ class CodeCoreBindings {
   late final _FreeDiagnosticsDart diagnosticsFree;
   late final _FoldingDart documentFoldingRanges;
   late final _FreeFoldingDart foldingRangesFree;
-  late final _FindDart documentFind;
+  late final _SearchDart documentSearch;
   late final _FreeRangesDart searchRangesFree;
   late final _SetProposedDart documentSetProposedText;
   late final _HasProposalDart documentHasProposal;

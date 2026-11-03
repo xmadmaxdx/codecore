@@ -59,8 +59,8 @@ public final class NativeCodeCore {
 
     public static native String[] nativeDiagnose(long handle);
 
-    public static native int[] nativeFind(
-            long handle, String query, boolean caseSensitive, boolean wholeWord);
+    public static native long[] nativeFind(
+            long handle, String query, boolean caseSensitive, boolean wholeWord, boolean regex);
 
     public static native int[] nativeFoldingRanges(long handle);
 

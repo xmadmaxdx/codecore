@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
+
 import 'models.dart';
 import 'native_bindings.dart';
 
@@ -732,10 +733,15 @@ class CodeCoreDocument {
     return ranges;
   }
 
+  /// Finds literal text, or ECMAScript regular expressions when [regex] is true.
+  ///
+  /// Throws [CodeCoreException] with status 1 when [regex] is true and the
+  /// pattern is invalid.
   List<SearchMatch> find(
     String query, {
     bool caseSensitive = false,
     bool wholeWord = false,
+    bool regex = false,
   }) {
     _ensureAlive();
     final queryBytes = utf8.encode(query);
@@ -747,17 +753,27 @@ class CodeCoreDocument {
     options.ref.structSize = sizeOf<CcSearchOptions>();
     options.ref.caseSensitive = caseSensitive ? 1 : 0;
     options.ref.wholeWord = wholeWord ? 1 : 0;
+    options.ref.regex = regex ? 1 : 0;
     final slot = _bindings
         .allocate(sizeOf<Pointer<CcRange>>())
         .cast<Pointer<CcRange>>();
+    final countSlot = _bindings.allocate(sizeOf<IntPtr>()).cast<IntPtr>();
     try {
-      final count = _bindings.documentFind(
+      final status = _bindings.documentSearch(
         _handle,
         queryPointer,
         queryBytes.length,
         options,
         slot,
+        countSlot,
       );
+      if (status != 0) {
+        throw CodeCoreException(
+          status,
+          _bindings.readCString(_bindings.documentLastError(_handle)),
+        );
+      }
+      final count = countSlot.value;
       final pointer = slot.value;
       final matches = <SearchMatch>[];
       try {
@@ -772,6 +788,7 @@ class CodeCoreDocument {
       }
       return matches;
     } finally {
+      _bindings.freePointer(countSlot);
       _bindings.freePointer(slot);
       _bindings.freePointer(options);
       _bindings.freePointer(queryPointer);

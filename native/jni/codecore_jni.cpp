@@ -262,6 +262,15 @@ jintArray intArray(JNIEnv* env, const std::vector<jint>& values) {
   return array;
 }
 
+jlongArray longArray(JNIEnv* env, const std::vector<jlong>& values) {
+  jlongArray array = env->NewLongArray(static_cast<jsize>(values.size()));
+  if (!array) {
+    return nullptr;
+  }
+  env->SetLongArrayRegion(array, 0, static_cast<jsize>(values.size()), values.data());
+  return array;
+}
+
 }  // namespace
 
 extern "C" {
@@ -455,26 +464,31 @@ Java_dev_codecore_nativebridge_NativeCodeCore_nativeDiagnose(JNIEnv* env, jclass
   return stringArray(env, lines);
 }
 
-JNIEXPORT jintArray JNICALL
+JNIEXPORT jlongArray JNICALL
 Java_dev_codecore_nativebridge_NativeCodeCore_nativeFind(JNIEnv* env, jclass, jlong handle,
                                                           jstring query, jboolean caseSensitive,
-                                                          jboolean wholeWord) {
+                                                          jboolean wholeWord, jboolean regex) {
   const std::string value = javaStringToUtf8(env, query);
   cc_search_options options{};
   options.struct_size = sizeof(cc_search_options);
   options.case_sensitive = caseSensitive ? 1 : 0;
   options.whole_word = wholeWord ? 1 : 0;
+  options.regex = regex ? 1 : 0;
   cc_range* ranges = nullptr;
-  const size_t count = cc_document_find(documentFrom(handle), value.data(), value.size(),
-                                         &options, &ranges);
-  std::vector<jint> packed;
-  packed.reserve(count * 2);
-  for (size_t index = 0; index < count; ++index) {
-    packed.push_back(static_cast<jint>(ranges[index].start));
-    packed.push_back(static_cast<jint>(ranges[index].end));
+  size_t count = 0;
+  const cc_status status = cc_document_search(documentFrom(handle), value.data(), value.size(),
+                                               &options, &ranges, &count);
+  std::vector<jlong> packed;
+  packed.reserve(1 + count * 2);
+  packed.push_back(static_cast<jlong>(status));
+  if (status == CC_STATUS_OK) {
+    for (size_t index = 0; index < count; ++index) {
+      packed.push_back(static_cast<jlong>(ranges[index].start));
+      packed.push_back(static_cast<jlong>(ranges[index].end));
+    }
   }
   cc_search_ranges_free(ranges);
-  return intArray(env, packed);
+  return longArray(env, packed);
 }
 
 JNIEXPORT jintArray JNICALL

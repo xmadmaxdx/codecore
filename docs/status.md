@@ -31,7 +31,7 @@ covered by the verification below; it does not imply production hardening.
 | Completion | Keywords, types, builtins, document symbols; prefix filter, ranking, 100-item cap |
 | Diagnostics | Unmatched/unclosed brackets, unterminated strings and block comments |
 | Folding | Brace ranges, multi-line comment ranges |
-| Find | Literal search with case and whole-word options |
+| Find | Literal search with case and whole-word options; ECMAScript regex search with status reporting |
 | Snapshots | Create, query, compare through text access, restore as one undoable edit |
 | Proposals | Preview text, bounded line diff, accept/reject, atomic accept |
 | Ghost text | Host-provided inline suggestion, partial acceptance, dismissal, auto-clear on edit |
@@ -50,15 +50,15 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 | Check | Command | Result |
 |---|---|---|
 | Native build | `cmake --build build/native --config Release` | Success |
-| Native tests | `./build/native/codecore_tests.exe` | **2,967 checks, 0 failures** |
+| Native tests | `./build/native/codecore_tests.exe` | **2,982 checks, 0 failures** |
 | CTest | `ctest --test-dir build/native --output-on-failure` | 1/1 passed |
 | Dart analyze | `dart analyze` in `sdk/flutter` | No issues |
-| Dart FFI smoke | `dart run tool/smoke_test.dart` | **61 checks, 0 failures** |
+| Dart FFI smoke | `dart run tool/smoke_test.dart` | **64 checks, 0 failures** |
 | JNI build | `cmake --build build/jni` | Success |
-| JNI smoke | `java -Djava.library.path=build/jni -cp build/jni/classes JniSmokeTest` | **72 checks, 0 failures** |
+| JNI smoke | `java -Djava.library.path=build/jni -cp build/jni/classes JniSmokeTest` | **74 checks, 0 failures** |
 | Kotlin Gradle build | `gradlew.bat :assembleDebug` | **BUILD SUCCESSFUL**; Kotlin and Android/JNI sources compiled, debug AAR produced |
 | Flutter Android plugin | Not built on this machine | Plugin sources and CMake build are present |
-| Performance | Manual benchmark only | No speed or memory target claimed |
+| Benchmark | `build/native/codecore_benchmark.exe` | Results recorded below; no target claimed |
 
 ## Source present, not built on this machine
 
@@ -82,7 +82,7 @@ Do not treat any of these as available:
 - Execution API, runtime manager, terminal, debugging, build system.
 - Project/workspace management, git integration, symbol indexing.
 - Multi-cursor editing and multi-selection API.
-- Regex search and indentation-based folding.
+- Indentation-based folding (brace and block-comment folding only).
 - Incremental tokenization; lexical analysis still scans the whole document per
   version, though unchanged versions are cached.
 - Performance benchmarks with a target, memory profiling and low-end device
@@ -112,3 +112,25 @@ Do not treat any of these as available:
    the isolate that owns the document.
 10. **No UI.** There is no Flutter widget, Compose view, gutter, theme or
     renderer in this release.
+11. **Regex search is host-controlled.** Patterns use C++ ECMAScript semantics,
+    are capped at 10,000 ranges and are not protected against pathological
+    backtracking. Validate or constrain patterns in trusted code.
+
+## Performance snapshot
+
+Manual benchmark, 1,000,100-byte Python document (33,373 lines, 116,802 tokens)
+on the development machine:
+
+| Measurement | Result |
+|---|---|
+| `set_text` | 18.9 ms |
+| First full tokenize | 233.1 ms |
+| Cached tokenize call | 5.3 ms (copies 116k tokens) |
+| Insert at offset 0 (1 MB document) | 5.6 ms average |
+| Snapshot creation | 0.8 ms |
+| Cached snapshot tokenize | 3.2 ms |
+
+These are single-run numbers on one machine, not a target. They show the
+current shape: analysis is cached per version, edits update the line index
+incrementally, and snapshot creation is cheap, while the first tokenize after
+an edit is still a full scan.

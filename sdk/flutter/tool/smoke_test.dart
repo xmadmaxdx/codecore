@@ -101,6 +101,18 @@ void main() {
     check(findDoc.find('hello').length == 2, 'case-insensitive find');
     check(findDoc.find('hello', caseSensitive: true).length == 1, 'case-sensitive find');
     check(findDoc.find('hell', wholeWord: true).length == 1, 'whole-word find');
+    check(findDoc.find(r'h.llo', regex: true).length == 2, 'regex find');
+    check(
+      findDoc.find(r'^hell', regex: true).length == 2,
+      'multiline regex anchors',
+    );
+    var invalidRegexThrew = false;
+    try {
+      findDoc.find('(', regex: true);
+    } on CodeCoreException {
+      invalidRegexThrew = true;
+    }
+    check(invalidRegexThrew, 'invalid regex throws');
     findDoc.dispose();
 
     final bracketDoc = core.createDocument(language: 'javascript');

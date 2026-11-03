@@ -158,6 +158,37 @@ destroyed. They are independently queryable for text, version, language, tokens,
 completion, diagnostics, folding and find. Restoration is rejected on read-only
 documents and does not reset the undo history.
 
+## Search
+
+`cc_document_find` is the original literal API and remains available. It returns
+the match count and cannot distinguish "no matches" from an invalid pattern.
+
+For status reporting and regular expressions use `cc_document_search` or
+`cc_snapshot_search`:
+
+```c
+cc_search_options options = {0};
+options.struct_size = sizeof(options);
+options.case_sensitive = 1;
+options.regex = 1;
+
+const char* pattern = "\\bdef\\s+\\w+";
+cc_range* ranges = NULL;
+size_t count = 0;
+cc_status status = cc_document_search(doc, pattern, strlen(pattern), &options,
+                                      &ranges, &count);
+if (status == CC_STATUS_INVALID_ARGUMENT) {
+  /* malformed pattern; cc_document_last_error has the reason */
+}
+cc_search_ranges_free(ranges);
+```
+
+`options` must be zero-initialized before fields are set. Regex syntax is
+ECMAScript with multiline `^` and `$`; matching is case-insensitive unless
+`case_sensitive` is set. `whole_word` adds word-boundary checks around each
+match. Results are capped at 10,000 ranges. A malformed pattern returns
+`CC_STATUS_INVALID_ARGUMENT` with no ranges and sets the document's last error.
+
 ## Language switching
 
 `cc_document_set_language(doc, language_id)` uses an id from
@@ -189,7 +220,7 @@ There is no semantic-LSP flag. Do not infer LSP support from these bits.
   `cc_engine_config.max_document_bytes`.
 - Default history depth: 200 edits; 0 disables undo.
 - Completion is capped at 100 entries.
-- Find is capped at 10,000 matches.
+- Search is capped at 10,000 matches.
 - Diagnostics are capped at 200 entries.
 - Folding ranges are capped at 500 entries.
 - Diff uses a bounded LCS table (4,000,000 cells / 20,000 lines); larger inputs

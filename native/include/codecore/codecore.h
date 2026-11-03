@@ -223,6 +223,8 @@ typedef struct cc_search_options {
   uint32_t struct_size;
   uint8_t case_sensitive;
   uint8_t whole_word;
+  /* Zero-initialize the struct before setting fields. */
+  uint8_t regex;
 } cc_search_options;
 
 typedef struct cc_selection {
@@ -335,8 +337,14 @@ CC_API size_t cc_document_diagnose(const cc_document* document, cc_diagnostic** 
 CC_API void cc_diagnostics_free(cc_diagnostic* diagnostics, size_t count);
 CC_API size_t cc_document_folding_ranges(const cc_document* document, cc_folding_range** out_ranges);
 CC_API void cc_folding_ranges_free(cc_folding_range* ranges);
+/* Literal find. Kept for compatibility; prefer cc_document_search. */
 CC_API size_t cc_document_find(const cc_document* document, const char* query, size_t query_length,
                                const cc_search_options* options, cc_range** out_ranges);
+/* Search with status reporting. options->regex selects ECMAScript syntax.
+ * An invalid pattern returns CC_STATUS_INVALID_ARGUMENT and no ranges. */
+CC_API cc_status cc_document_search(const cc_document* document, const char* query,
+                                    size_t query_length, const cc_search_options* options,
+                                    cc_range** out_ranges, size_t* out_count);
 CC_API void cc_search_ranges_free(cc_range* ranges);
 
 /* Proposed changes. Preview text never mutates the document. */
@@ -375,6 +383,9 @@ CC_API size_t cc_snapshot_folding_ranges(const cc_snapshot* snapshot,
 CC_API size_t cc_snapshot_find(const cc_snapshot* snapshot, const char* query,
                                size_t query_length, const cc_search_options* options,
                                cc_range** out_ranges);
+CC_API cc_status cc_snapshot_search(const cc_snapshot* snapshot, const char* query,
+                                    size_t query_length, const cc_search_options* options,
+                                    cc_range** out_ranges, size_t* out_count);
 CC_API cc_status cc_document_restore_snapshot(cc_document* document,
                                              const cc_snapshot* snapshot);
 

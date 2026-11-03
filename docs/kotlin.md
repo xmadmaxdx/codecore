@@ -54,7 +54,7 @@ javac -d build/jni/classes \
 java -Djava.library.path=build/jni -cp build/jni/classes JniSmokeTest
 ```
 
-Result: **72 checks, 0 failures**. The Java harness uses the same JNI symbols the
+Result: **74 checks, 0 failures**. The Java harness uses the same JNI symbols the
 Kotlin object declares.
 
 ## Usage
@@ -129,7 +129,10 @@ closed.
   `canRedo`
 - `insert`, `erase`, `replace`, `undo`, `redo`, `clearHistory`
 - `setSelection`, `moveCursor`, `setChangeListener`
-- `tokenize`, `complete`, `diagnose`, `find`, `foldingRanges`, `matchBracket`
+- `tokenize`, `complete`, `diagnose`, `find(query, caseSensitive, wholeWord,
+  regex)`, `foldingRanges`, `matchBracket`
+- Invalid regex patterns throw `CodeCoreException` (status 1) instead of
+  returning an empty list
 - `setProposal`, `proposal`, `proposalDiff`, `acceptProposal`, `rejectProposal`,
   `hasProposal`
 - `showGhostText`, `ghostText`, `acceptGhostText`, `dismissGhostText`
@@ -144,5 +147,7 @@ closed.
   the 2 GB boundary.
 - Change callbacks run on the mutating thread while the native document is
   locked. Do not block or close the document inside the callback.
+- Regex search uses native ECMAScript semantics and is capped at 10,000
+  matches; pathological patterns are not sandboxed.
 - No editor rendering, theme integration, or lifecycle-aware controller.
 - No semantic intelligence or execution.

@@ -441,6 +441,51 @@ void testSearch(cc_engine* engine) {
 
   count = cc_document_find(document, "", 0, &options, &ranges);
   CHECK(count == 0);
+
+  // Regex search reports invalid patterns instead of silently returning zero.
+  options.whole_word = 0;
+  options.case_sensitive = 0;
+  options.regex = 1;
+  size_t searchCount = 0;
+  cc_status status = cc_document_search(document, "h.llo", 5, &options, &ranges, &searchCount);
+  CHECK(status == CC_STATUS_OK);
+  CHECK(searchCount == 2);
+  cc_search_ranges_free(ranges);
+
+  status = cc_document_search(document, "^hell", 5, &options, &ranges, &searchCount);
+  CHECK(status == CC_STATUS_OK);
+  CHECK(searchCount == 2);
+  cc_search_ranges_free(ranges);
+
+  options.case_sensitive = 1;
+  status = cc_document_search(document, "[A-Z][a-z]+", 11, &options, &ranges, &searchCount);
+  CHECK(status == CC_STATUS_OK);
+  CHECK(searchCount == 1);
+  if (searchCount == 1) {
+    CHECK(ranges[0].start == 0);
+    CHECK(ranges[0].end == 5);
+  }
+  cc_search_ranges_free(ranges);
+
+  options.case_sensitive = 0;
+  options.whole_word = 1;
+  status = cc_document_search(document, "hell", 4, &options, &ranges, &searchCount);
+  CHECK(status == CC_STATUS_OK);
+  CHECK(searchCount == 1);
+  cc_search_ranges_free(ranges);
+
+  options.whole_word = 0;
+  status = cc_document_search(document, "(", 1, &options, &ranges, &searchCount);
+  CHECK(status == CC_STATUS_INVALID_ARGUMENT);
+  CHECK(searchCount == 0);
+
+  cc_snapshot* snapshot = cc_document_create_snapshot(document);
+  CHECK(snapshot != nullptr);
+  status = cc_snapshot_search(snapshot, "h.llo", 5, &options, &ranges, &searchCount);
+  CHECK(status == CC_STATUS_OK);
+  CHECK(searchCount == 2);
+  cc_search_ranges_free(ranges);
+  cc_snapshot_destroy(snapshot);
   cc_document_destroy(document);
 }
 

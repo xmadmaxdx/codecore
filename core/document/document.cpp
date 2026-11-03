@@ -825,10 +825,18 @@ std::vector<FoldingRange> Document::foldingRanges() const {
   return currentAnalysis()->foldingRanges();
 }
 
-std::vector<Range> Document::find(std::string_view query,
-                                  const SearchOptions& options) const {
+Status Document::find(std::string_view query, const SearchOptions& options,
+                      std::vector<Range>* out) const {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
-  return currentAnalysis()->find(query, options);
+  if (!out) {
+    return fail(Status::InvalidArgument, "search output is null");
+  }
+  const Status status = currentAnalysis()->find(query, options, out);
+  if (status != Status::Ok) {
+    out->clear();
+    return fail(status, "invalid regular expression");
+  }
+  return succeed();
 }
 
 std::shared_ptr<Snapshot> Document::createSnapshot() const {

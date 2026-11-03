@@ -77,8 +77,12 @@ public final class JniSmokeTest {
         check(foundTotal, "symbol completion");
 
         check(NativeCodeCore.nativeDiagnose(document).length == 0, "clean diagnostics");
-        int[] matches = NativeCodeCore.nativeFind(document, "return", false, false);
-        check(matches.length == 2, "find result pair");
+        long[] matches = NativeCodeCore.nativeFind(document, "return", false, false, false);
+        check(matches.length == 3 && matches[0] == 0, "find result pair");
+        long[] regexMatches = NativeCodeCore.nativeFind(document, "\\breturn\\b", false, false, true);
+        check(regexMatches.length == 3 && regexMatches[0] == 0, "regex find result pair");
+        long[] badRegex = NativeCodeCore.nativeFind(document, "(", false, false, true);
+        check(badRegex.length == 1 && badRegex[0] == 1, "invalid regex reports status");
 
         check(NativeCodeCore.nativeInsert(document, 0, "X") == 0, "insert");
         check(NativeCodeCore.nativeCanUndo(document), "can undo");

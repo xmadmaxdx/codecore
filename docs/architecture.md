@@ -144,7 +144,9 @@ diagnostics and folding only.
 - **Diagnostics** cover unmatched/unclosed brackets, unterminated strings and
   unterminated block comments.
 - **Folding** covers brace and multi-line block-comment ranges.
-- **Find** is literal, with case and whole-word options.
+- **Find** is literal by default, with optional case, whole-word and
+  ECMAScript-regex modes. Search returns a status so malformed patterns are
+  reported instead of looking like zero matches.
 
 Analysis is per-version, not incremental. Snapshots move it off the document
 lock, but do not make tokenization incremental.
@@ -176,9 +178,9 @@ lock, but do not make tokenization incremental.
   `libcodecore.so` from the shared sources. Publishing needs the native sources
   vendored into the package or a prebuilt AAR.
 - **Kotlin** (`sdk/kotlin`): JNI bridge with explicit UTF-8/UTF-16 conversion.
-  The Gradle wrapper and NDK version are included. The bridge is compiled and
-  smoke-tested via a Java harness; Kotlin compilation still needs a confirming
-  Gradle run.
+  The Gradle wrapper and NDK version are included. `:assembleDebug` compiles the
+  Kotlin SDK and native sources into a debug AAR; the JNI surface is also
+  smoke-tested through a Java harness with identical symbols.
 
 ## Why these choices
 

@@ -17,6 +17,7 @@ editor-widget milestone, which does not exist yet.
   restoration.
 - Kotlin parity for selection, cursor movement, language switching, change
   listeners, proposals, ghost text and snapshots.
+- Regex search with status reporting across the C ABI, Dart and Kotlin.
 - A Flutter Android plugin that builds and packages `libcodecore.so`; manual
   `jniLibs` copying is no longer required in this repository.
 
@@ -36,7 +37,7 @@ Implemented and tested:
 | Keyword / symbol / builtin completion | Implemented, tested |
 | Bracket and unterminated-literal diagnostics | Implemented, tested |
 | Brace and block-comment folding | Implemented, tested |
-| Literal find (case, whole-word) | Implemented, tested |
+| Literal and regex find (case, whole-word) | Implemented, tested |
 | C ABI with explicit ownership, events and origin metadata | Implemented, tested |
 | Immutable snapshots and snapshot restore | Implemented, tested |
 | Proposed changes, bounded line diff, atomic accept/reject | Implemented, tested |
@@ -118,11 +119,11 @@ Last verified on the development machine:
 
 | Check | Result |
 |---|---|
-| Native engine tests | **2,967 checks, 0 failures** |
+| Native engine tests | **2,982 checks, 0 failures** |
 | CTest | 1/1 passed |
 | Dart static analysis | No issues |
-| Dart FFI smoke test | **61 checks, 0 failures** |
-| JNI smoke test (Java) | **72 checks, 0 failures** |
+| Dart FFI smoke test | **64 checks, 0 failures** |
+| JNI smoke test (Java) | **74 checks, 0 failures** |
 | Kotlin module compile | `gradlew.bat :assembleDebug` — **BUILD SUCCESSFUL**, debug AAR produced (NDK 28.2.13676358) |
 | Benchmark | Manual harness exists; no speed target is claimed |
 

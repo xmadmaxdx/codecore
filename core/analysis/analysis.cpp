@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <regex>
 #include <unordered_map>
 #include <utility>
 
@@ -406,41 +407,87 @@ std::vector<FoldingRange> Analysis::foldingRanges() const {
   return folding_;
 }
 
-std::vector<Range> Analysis::find(std::string_view query,
-                                  const SearchOptions& options) const {
-  std::vector<Range> results;
-  if (query.empty()) {
-    return results;
+Status Analysis::find(std::string_view query, const SearchOptions& options,
+                      std::vector<Range>* out) const {
+  if (!out) {
+    return Status::InvalidArgument;
   }
-  const std::string needle = options.caseSensitive ? std::string(query)
-                                                    : asciiLowerCopy(query);
-  const std::string haystack = options.caseSensitive ? text_ : asciiLowerCopy(text_);
+  out->clear();
+  if (query.empty()) {
+    return Status::Ok;
+  }
 
-  size_t position = 0;
-  while (position + needle.size() <= haystack.size()) {
-    const size_t found = haystack.find(needle, position);
-    if (found == std::string::npos) {
-      break;
-    }
-    const size_t matchEnd = found + needle.size();
-    bool valid = true;
-    if (options.wholeWord) {
-      if (found > 0 && isWordByte(static_cast<unsigned char>(text_[found - 1]))) {
-        valid = false;
-      }
-      if (matchEnd < text_.size() && isWordByte(static_cast<unsigned char>(text_[matchEnd]))) {
-        valid = false;
-      }
-    }
-    if (valid) {
-      results.push_back(Range{static_cast<uint32_t>(found), static_cast<uint32_t>(matchEnd)});
-      if (results.size() >= 10000) {
+  if (!options.regex) {
+    const std::string needle = options.caseSensitive ? std::string(query)
+                                                      : asciiLowerCopy(query);
+    const std::string haystack = options.caseSensitive ? text_ : asciiLowerCopy(text_);
+
+    size_t position = 0;
+    while (position + needle.size() <= haystack.size()) {
+      const size_t found = haystack.find(needle, position);
+      if (found == std::string::npos) {
         break;
       }
+      const size_t matchEnd = found + needle.size();
+      bool valid = true;
+      if (options.wholeWord) {
+        if (found > 0 && isWordByte(static_cast<unsigned char>(text_[found - 1]))) {
+          valid = false;
+        }
+        if (matchEnd < text_.size() && isWordByte(static_cast<unsigned char>(text_[matchEnd]))) {
+          valid = false;
+        }
+      }
+      if (valid) {
+        out->push_back(
+            Range{static_cast<uint32_t>(found), static_cast<uint32_t>(matchEnd)});
+        if (out->size() >= 10000) {
+          break;
+        }
+      }
+      position = found + 1;
     }
-    position = found + 1;
+    return Status::Ok;
   }
-  return results;
+
+  // ECMAScript syntax is the common editor subset. Multiline makes ^ and $
+  // match line boundaries, which is what code search expects.
+  std::regex_constants::syntax_option_type flags =
+      std::regex_constants::ECMAScript | std::regex_constants::optimize |
+      std::regex_constants::multiline;
+  if (!options.caseSensitive) {
+    flags |= std::regex_constants::icase;
+  }
+
+  try {
+    const std::regex pattern(query.begin(), query.end(), flags);
+    for (std::sregex_iterator it(text_.begin(), text_.end(), pattern), end;
+         it != end && out->size() < 10000; ++it) {
+      const std::smatch& match = *it;
+      const size_t found = static_cast<size_t>(match.position(0));
+      const size_t matchEnd = found + static_cast<size_t>(match.length(0));
+      if (matchEnd <= found) {
+        continue;
+      }
+      bool valid = true;
+      if (options.wholeWord) {
+        if (found > 0 && isWordByte(static_cast<unsigned char>(text_[found - 1]))) {
+          valid = false;
+        }
+        if (matchEnd < text_.size() && isWordByte(static_cast<unsigned char>(text_[matchEnd]))) {
+          valid = false;
+        }
+      }
+      if (valid) {
+        out->push_back(
+            Range{static_cast<uint32_t>(found), static_cast<uint32_t>(matchEnd)});
+      }
+    }
+  } catch (const std::regex_error&) {
+    out->clear();
+    return Status::InvalidArgument;
+  }
+  return Status::Ok;
 }
 
 bool Analysis::matchBracket(size_t offset, size_t* outMatch) const {

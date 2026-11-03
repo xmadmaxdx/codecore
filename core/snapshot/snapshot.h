@@ -37,7 +37,8 @@ class Snapshot {
   std::vector<CompletionItem> complete(size_t offset) const;
   std::vector<Diagnostic> diagnose() const;
   std::vector<FoldingRange> foldingRanges() const;
-  std::vector<Range> find(std::string_view query, const SearchOptions& options) const;
+  Status find(std::string_view query, const SearchOptions& options,
+              std::vector<Range>* out) const;
 
  private:
   std::string text_;

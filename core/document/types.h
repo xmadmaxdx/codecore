@@ -103,6 +103,7 @@ struct FoldingRange {
 struct SearchOptions {
   bool caseSensitive = false;
   bool wholeWord = false;
+  bool regex = false;
 };
 
 struct Range {

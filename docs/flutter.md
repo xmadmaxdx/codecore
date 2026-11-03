@@ -128,11 +128,14 @@ final items = doc.complete();
 final problems = doc.diagnose();
 final folds = doc.foldingRanges();
 final matches = doc.find('total', wholeWord: true);
+final definitions = doc.find(r'\bdef\s+\w+', regex: true);
 final partner = doc.matchBracket(offset);
 ```
 
 Completion is suppressed inside strings and comments. Diagnostics are lexical
-only. Capability flags on `core.languages` reflect what is implemented.
+only. Regex search uses ECMAScript syntax, is capped at 10,000 matches and
+throws `CodeCoreException` with status 1 for an invalid pattern. Capability
+flags on `core.languages` reflect what is implemented.
 
 ## Testing
 
@@ -144,14 +147,15 @@ CODECORE_LIBRARY_PATH=../../build/native/libcodecore.dll \
   dart run tool/smoke_test.dart
 ```
 
-Last run: analyze clean; smoke test **61 checks / 0 failures**.
+Last run: analyze clean; smoke test **64 checks / 0 failures**.
 
 ## Limitations
 
 - No Flutter widgets, controller widget, gutter, theme or rendering.
 - No async language services; do not call them on the UI thread for large files.
 - Single selection only.
-- No regex search.
+- Regex patterns run in the native ECMAScript engine; pathological patterns are
+  not sandboxed.
 - No semantic intelligence or execution.
 - Android plugin publishing needs the native sources vendored or an AAR; local
   path integration in this repository works from the shared source tree.

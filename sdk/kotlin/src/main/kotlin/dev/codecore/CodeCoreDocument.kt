@@ -308,17 +308,42 @@ class CodeCoreDocument internal constructor(initialHandle: Long) : AutoCloseable
         }
     }
 
+    /**
+     * Finds literal text, or ECMAScript regular expressions when [regex] is true.
+     *
+     * The first element of the native result is the status; it is checked here so
+     * an invalid pattern throws [CodeCoreException] instead of returning nothing.
+     */
     fun find(
         query: String,
         caseSensitive: Boolean = false,
         wholeWord: Boolean = false,
+        regex: Boolean = false,
     ): List<SearchRange> {
         synchronized(lock) {
-            val packed = NativeCodeCore.nativeFind(nativeHandle(), query, caseSensitive, wholeWord)
-            val result = ArrayList<SearchRange>(packed.size / 2)
-            var index = 0
+            val target = nativeHandle()
+            val packed = NativeCodeCore.nativeFind(
+                target,
+                query,
+                caseSensitive,
+                wholeWord,
+                regex,
+            )
+            if (packed.isEmpty()) {
+                return emptyList()
+            }
+            val status = packed[0].toInt()
+            if (status != 0) {
+                lastErrorMessage = NativeCodeCore.nativeLastError(target)
+                throw CodeCoreException(
+                    status,
+                    if (lastErrorMessage.isBlank()) "native status $status" else lastErrorMessage,
+                )
+            }
+            val result = ArrayList<SearchRange>((packed.size - 1) / 2)
+            var index = 1
             while (index + 1 < packed.size) {
-                result.add(SearchRange(packed[index], packed[index + 1]))
+                result.add(SearchRange(packed[index].toInt(), packed[index + 1].toInt()))
                 index += 2
             }
             return result
