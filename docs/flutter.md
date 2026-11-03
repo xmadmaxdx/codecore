@@ -82,9 +82,11 @@ multi-cursor edit as one entry. Change events fire once per affected range.
 
 ## Structural syntax
 
-Tree-sitter is bundled for `python` and `javascript` (including JSX and the
-`js`/`jsx`/`mjs`/`cjs` aliases). `syntaxTree()` returns `null` for a language
-without a grammar; lexical tokens still work for every language.
+Tree-sitter is bundled for `python`, `javascript` (including JSX and the
+`js`/`jsx`/`mjs`/`cjs` aliases), `java`, `go`, `json`, `c`, `cpp` and `rust`.
+`js`/`javascript` aliases and `rs`/`rust`, `go`/`golang`, `c++`/`cpp` resolve to
+the canonical grammar id. `syntaxTree()` returns `null` for a language without
+a grammar; lexical tokens still work for every language.
 
 ```dart
 if (core.supportsStructuralSyntax('python')) {
@@ -274,9 +276,9 @@ CODECORE_LIBRARY_PATH=../../build/native/libcodecore.dll \
   dart run tool/smoke_test.dart
 ```
 
-Last run: analyze clean; smoke test **111 checks / 0 failures**. The smoke test
-asserts ABI 6 and covers structural syntax, LSP, documents, editing and agent
-features.
+Last run: analyze clean; smoke test **124 checks / 0 failures**. The smoke test
+asserts ABI 6 and covers structural syntax (including Java), LSP, documents,
+editing and agent features.
 
 ## Limitations
 
@@ -285,8 +287,9 @@ features.
 - Multi-cursor is supported; overlapping selections merge before an edit.
 - Regex patterns run in the native ECMAScript engine; pathological patterns are
   not sandboxed.
-- Structural syntax is Python and JavaScript only; other languages use the
-  lexical tokenizer.
+- Structural syntax is compiled in for Python, JavaScript, Java, Go, JSON, C,
+  C++ and Rust. The other 32 languages use the lexical tokenizer and return
+  `null` from `syntaxTree()`.
 - No semantic intelligence or runtime management. Execution runs only what the
   host supplies; no interpreter is bundled.
 - Android plugin publishing needs the native sources vendored or an AAR; local

@@ -11,12 +11,19 @@ editor-widget milestone, which does not exist yet.
 
 ## What changed in 0.5
 
+- Language registry expanded to 40 real lexical definitions, adding Perl, R,
+  Scala, Groovy, Haskell, Elixir, Erlang, Clojure, OCaml, F#, Visual Basic,
+  PowerShell, Objective-C, Assembly, MATLAB, Julia and Fortran.
+- Structural Tree-sitter grammars expanded from two to eight: Python,
+  JavaScript, Java, Go, JSON, C, C++ and Rust. Each grammar supplies a concrete
+  syntax tree, structural highlights and real `ERROR`/`MISSING` nodes; malformed
+  source is reported as syntax errors instead of being silently accepted.
 - Local process execution: a cross-platform session API with piped stdin,
   stdout and stderr, polled output events, timeouts, cancellation, working
   directory and environment overrides, exposed through the C ABI, Dart SDK
   and Kotlin SDK. No runtime or compiler is bundled; the host supplies the
   executable.
-- Tree-sitter integration: a vendored C runtime with Python and JavaScript
+- Tree-sitter integration: a vendored C runtime with eight compiled-in
   grammars, incremental reparse from the previous tree, structural highlights
   and real syntax errors, exposed through the C ABI, Dart SDK and Kotlin SDK.
 - Incremental line indexing, versioned analysis caches and immutable snapshots.
@@ -53,9 +60,9 @@ Implemented and tested:
 | Background analysis worker (latest-wins, stale-result rejection) | Implemented, tested |
 | Viewport visible-range geometry with overscan | Implemented, tested |
 | LSP client (framing, lifecycle, sync, completion, hover, definition, references, symbols, rename, formatting, code actions, diagnostics) | Implemented across the C ABI, Dart and Kotlin; tested |
-| 23 language definitions and lexical tokens | Implemented, tested |
-| Tree-sitter structural syntax (Python and JavaScript grammars) | Implemented in the core, C ABI, Dart and Kotlin SDKs; 223 native and 105 Dart smoke checks, 0 failures |
-| Local process execution (pipes, streaming, timeout, cancel, cwd, env) | Implemented in the core, C ABI, Dart and Kotlin SDKs; 79 native, 111 Dart and 126 JNI checks, 0 failures |
+| 40 language definitions and lexical tokens | Implemented, tested; eight languages also have bundled structural grammars. Full list: [docs/languages.md](docs/languages.md) |
+| Tree-sitter structural syntax (Python, JavaScript, Java, Go, JSON, C, C++, Rust) | Implemented in the core, C ABI, Dart and Kotlin SDKs; 434 native, 124 Dart and 175 JNI checks, 0 failures |
+| Local process execution (pipes, streaming, timeout, cancel, cwd, env) | Implemented in the core, C ABI, Dart and Kotlin SDKs; 79 native, 115 Dart and 126 JNI checks, 0 failures |
 | Keyword / symbol / builtin completion | Implemented, tested |
 | Bracket and unterminated-literal diagnostics | Implemented, tested |
 | Brace and block-comment folding | Implemented, tested |
@@ -72,8 +79,8 @@ Not implemented yet — see [docs/status.md](docs/status.md):
 
 - Incremental tokenization; analysis is cached per version and offloaded to a
   worker, but an edited document is still re-lexed from the start.
-- Tree-sitter grammars beyond Python and JavaScript; there is no grammar loader
-  or downloadable grammar pack yet.
+- Structural grammars beyond the eight compiled-in languages; there is no
+  runtime grammar loader or downloadable grammar pack yet.
 - Language-server process/socket managers and bundled servers (hosts own the
   transport; CodeCore ships the protocol client only).
 - Semantic intelligence independent of LSP.
@@ -105,8 +112,9 @@ docs/                 Architecture, API notes and status
 
 ## Build the native core
 
-Requirements: CMake 3.20+, a C17 and C++17 compiler. Tree-sitter and the Python
-grammars are vendored under `third_party/`, so no network access is needed.
+Requirements: CMake 3.20+, a C17 and C++17 compiler. The Tree-sitter runtime
+and all bundled grammars are vendored under `third_party/`, so no network
+access is needed.
 
 ```bash
 cmake -S . -B build/native
@@ -150,16 +158,16 @@ version or update `ndkVersion` in `sdk/kotlin/build.gradle.kts`.
 
 | Check | Result |
 |---|---|
-| Native engine tests | **3,038 checks, 0 failures** |
+| Native engine tests | **3,361 checks, 0 failures** |
 | LSP tests | **59 checks, 0 failures** |
 | Viewport/background tests | **36 checks, 0 failures** |
-| Tree-sitter syntax tests | **137 checks, 0 failures** |
-| CTest | 4/4 passed |
+| Tree-sitter syntax tests | **434 checks, 0 failures** |
+| CTest | 5/5 passed |
 | Dart static analysis | No issues |
-| Dart FFI smoke test | **99 checks, 0 failures** |
-| JNI smoke test (Java) | **126 checks, 0 failures** |
+| Dart FFI smoke test | **124 checks, 0 failures** |
+| JNI smoke test (Java) | **175 checks, 0 failures** |
 | Kotlin module compile | `gradlew.bat :assembleDebug` — **BUILD SUCCESSFUL**, debug AAR produced (NDK 28.2.13676358) |
-| Android native build | `libcodecore_jni.so` built for arm64-v8a, armeabi-v7a, x86 and x86_64 with `tree_sitter_python` linked in |
+| Android native build | `libcodecore_jni.so` built for arm64-v8a, armeabi-v7a, x86 and x86_64 with the Tree-sitter runtime and all eight grammars linked in |
 | Benchmark | Manual harness exists; no speed target is claimed |
 
 ## Use from Dart
@@ -254,11 +262,11 @@ Rules that matter:
 
 The engine owns a piece-table buffer, an incrementally maintained line index and
 one immutable analysis cache per text version. A separate Tree-sitter layer
-parses supported languages incrementally and supplies structural highlights and
-syntax errors; the lexical analyzer remains the fallback for all other
-languages. Edits produce inverse records for
+parses eight supported languages incrementally and supplies structural
+highlights and syntax errors; the lexical analyzer remains the fallback for all
+other languages. Edits produce inverse records for
 undo; repeated adjacent typing coalesces into one history entry, and every record
-carries an edit origin. Language data is an immutable registry of 23 lexer
+carries an edit origin. Language data is an immutable registry of 40 lexer
 definitions loaded once per engine. Snapshots copy text and language, so analysis
 can move to a worker thread without holding the document lock. The C ABI is the
 only boundary seen by Dart and Kotlin; C++ types never cross it.
@@ -267,5 +275,4 @@ More detail: [docs/architecture.md](docs/architecture.md).
 
 ## License
 
-No license has been selected yet. Treat the source as all rights reserved until
-a license file is added.
+MIT. See [LICENSE](LICENSE).

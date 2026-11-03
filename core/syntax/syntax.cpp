@@ -7,12 +7,24 @@
 
 #include <tree_sitter/api.h>
 
+#include "core/syntax/c_highlights.h"
+#include "core/syntax/cpp_highlights.h"
+#include "core/syntax/go_highlights.h"
+#include "core/syntax/java_highlights.h"
 #include "core/syntax/javascript_highlights.h"
+#include "core/syntax/json_highlights.h"
 #include "core/syntax/python_highlights.h"
+#include "core/syntax/rust_highlights.h"
 
 extern "C" {
+const TSLanguage* tree_sitter_c(void);
+const TSLanguage* tree_sitter_cpp(void);
+const TSLanguage* tree_sitter_go(void);
+const TSLanguage* tree_sitter_java(void);
 const TSLanguage* tree_sitter_javascript(void);
+const TSLanguage* tree_sitter_json(void);
 const TSLanguage* tree_sitter_python(void);
+const TSLanguage* tree_sitter_rust(void);
 }
 
 namespace codecore {
@@ -35,6 +47,12 @@ constexpr GrammarEntry kGrammars[] = {
     {"python", "py python3", tree_sitter_python, syntax_queries::kPythonHighlights},
     {"javascript", "js jsx mjs cjs", tree_sitter_javascript,
      syntax_queries::kJavaScriptHighlights},
+    {"java", "java", tree_sitter_java, syntax_queries::kJavaHighlights},
+    {"go", "go golang", tree_sitter_go, syntax_queries::kGoHighlights},
+    {"json", "json", tree_sitter_json, syntax_queries::kJsonHighlights},
+    {"c", "c h", tree_sitter_c, syntax_queries::kCHighlights},
+    {"cpp", "cpp c++ cc cxx hpp", tree_sitter_cpp, syntax_queries::kCppHighlights},
+    {"rust", "rust rs", tree_sitter_rust, syntax_queries::kRustHighlights},
 };
 
 const GrammarEntry* findGrammar(std::string_view id) {

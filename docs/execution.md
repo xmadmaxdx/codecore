@@ -166,7 +166,7 @@ cmake --build build/native --target codecore_execution_tests
 ```
 
 The suite reports `Execution checks: 79, failures: 0` on Windows and is part of
-CTest. The Dart smoke test covers shell start, output and exit (111 checks); the
-JNI harness covers the same through JNI (126 checks). The POSIX backend is
+CTest. The Dart smoke test covers shell start, output and exit (124 checks); the
+JNI harness covers the same through JNI (175 checks). The POSIX backend is
 compiled by the Android NDK build; it was not run on a device in this
 repository's verification.

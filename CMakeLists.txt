@@ -45,6 +45,14 @@ add_library(codecore_tree_sitter STATIC
   third_party/tree-sitter-python/src/scanner.c
   third_party/tree-sitter-javascript/src/parser.c
   third_party/tree-sitter-javascript/src/scanner.c
+  third_party/tree-sitter-java/src/parser.c
+  third_party/tree-sitter-go/src/parser.c
+  third_party/tree-sitter-json/src/parser.c
+  third_party/tree-sitter-c/src/parser.c
+  third_party/tree-sitter-cpp/src/parser.c
+  third_party/tree-sitter-cpp/src/scanner.c
+  third_party/tree-sitter-rust/src/parser.c
+  third_party/tree-sitter-rust/src/scanner.c
 )
 target_include_directories(codecore_tree_sitter
   PUBLIC
@@ -53,6 +61,12 @@ target_include_directories(codecore_tree_sitter
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter/lib/src
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-python/src
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-javascript/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-java/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-go/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-json/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-c/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-cpp/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-rust/src
 )
 set_target_properties(codecore_tree_sitter PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(MSVC)
@@ -63,7 +77,13 @@ endif()
 
 target_include_directories(codecore_tree_sitter PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-python/src
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-javascript/src)
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-javascript/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-java/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-go/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-json/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-c/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-cpp/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-rust/src)
 
 add_library(codecore_objects OBJECT ${CODECORE_CORE_SOURCES})
 set_target_properties(codecore_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)

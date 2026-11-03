@@ -30,9 +30,9 @@ covered by the verification below; it does not imply production hardening.
 | Multi-cursor | Add/clear/query cursors, move all carets, atomic multi-insert and multi-erase with one undo entry |
 | LSP | JSON-RPC 2.0 plus Content-Length framing, initialize handshake, full-text sync, completion, hover, definition, signature help, references, document/workspace symbols, rename, formatting, code actions, semantic tokens, cancellation, publishDiagnostics and server request replies. C ABI, Dart and Kotlin surfaces are implemented and build-verified. |
 | Brackets | Matching bracket lookup, bracket-aware diagnostics |
-| Languages | 23 language definitions with comments, strings, keywords, types, builtins |
+| Languages | 40 language definitions with comments, strings, keywords, types, builtins |
 | Syntax | Lexical tokens for comments, strings, numbers, keywords, tags, attributes, CSS properties |
-| Structural syntax | Tree-sitter runtime plus Python and JavaScript grammars, incremental reparse, structural highlights, syntax errors, node lookup. Core, C ABI, Dart and Kotlin SDKs. |
+| Structural syntax | Tree-sitter runtime plus eight grammars (Python, JavaScript, Java, Go, JSON, C, C++, Rust), incremental reparse, structural highlights, syntax errors, node lookup. Core, C ABI, Dart and Kotlin SDKs. |
 | Local execution | One process per session with piped stdin/stdout/stderr, polled output events, per-stream ordering, timeouts, cancellation, exit codes, cwd and environment overrides. Core, C ABI, Dart and Kotlin SDKs; no runtime is bundled. |
 | Completion | Keywords, types, builtins, document symbols; prefix filter, ranking, 100-item cap |
 | Diagnostics | Unmatched/unclosed brackets, unterminated strings and block comments |
@@ -56,18 +56,18 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 | Check | Command | Result |
 |---|---|---|
 | Native build | `cmake --build build/native --config Release` | Success |
-| Native tests | `./build/native/codecore_tests.exe` | **3,038 checks, 0 failures** |
+| Native tests | `./build/native/codecore_tests.exe` | **3,361 checks, 0 failures** |
 | LSP tests | `./build/native/codecore_lsp_tests.exe` | **59 checks, 0 failures** |
 | Viewport/background tests | `./build/native/codecore_performance_tests.exe` | **36 checks, 0 failures** |
-| Tree-sitter syntax tests | `./build/native/codecore_syntax_tests.exe` | **223 checks, 0 failures** |
+| Tree-sitter syntax tests | `./build/native/codecore_syntax_tests.exe` | **434 checks, 0 failures** |
 | Execution tests | `./build/native/codecore_execution_tests.exe` | **79 checks, 0 failures** |
 | CTest | `ctest --test-dir build/native --output-on-failure` | 5/5 passed |
 | Dart analyze | `dart analyze` in `sdk/flutter` | No issues |
-| Dart FFI smoke | `dart run tool/smoke_test.dart` | **111 checks, 0 failures** |
+| Dart FFI smoke | `dart run tool/smoke_test.dart` | **124 checks, 0 failures** |
 | JNI build | `cmake --build build/native -DCODECORE_BUILD_JNI=ON` | Success |
-| JNI smoke | `java -Djava.library.path=build/native-jni -cp build/jni-test JniSmokeTest` | **126 checks, 0 failures** |
+| JNI smoke | `java -Djava.library.path=build/native-jni -cp build/jni-test JniSmokeTest` | **175 checks, 0 failures** |
 | Kotlin Gradle build | `gradlew.bat :assembleDebug` | **BUILD SUCCESSFUL**; Kotlin and Android/JNI sources compiled, debug AAR produced |
-| Android native build | `libcodecore_jni.so` for 4 ABIs | `tree_sitter_python`, `tree_sitter_javascript` and `ts_parser_parse_string` linked in |
+| Android native build | `libcodecore_jni.so` for 4 ABIs | Tree-sitter runtime and all eight grammars linked in |
 | LSP SDK surface | `dart analyze`, `gradlew.bat :assembleDebug` | Clean / BUILD SUCCESSFUL |
 | Flutter Android plugin | Not built on this machine | Plugin sources and CMake build are present |
 | Benchmark | `build/native/codecore_benchmark.exe` | Results recorded below; no target claimed |
@@ -84,7 +84,7 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 
 Do not treat any of these as available:
 
-- Tree-sitter grammars beyond Python and JavaScript; no grammar loader or grammar package yet.
+- Structural grammars beyond the eight compiled-in languages; no runtime grammar loader or grammar package yet.
 - Language-server process, pipe and socket managers; no server is bundled.
 - Semantic intelligence independent of LSP.
 - AI model providers, prompt orchestration, agent loops, chat, multi-file edits.
@@ -107,8 +107,9 @@ Do not treat any of these as available:
 ## Known limitations
 
 1. **Lexical or syntactic, never semantic.** The fallback highlighter is
-   heuristic. Tree-sitter supplies a concrete syntax tree for Python, not types,
-   scopes or name resolution. A string that looks like code is still a string.
+   heuristic. Tree-sitter supplies a concrete syntax tree for the eight bundled
+   languages, not types, scopes or name resolution. A string that looks like
+   code is still a string.
 2. **Analysis is per-version, not incremental.** Each edit invalidates the
    document analysis cache. `BackgroundAnalyzer` moves the full scan and
    diagnostics off the caller's thread and rejects stale results, but it does not
@@ -132,9 +133,11 @@ Do not treat any of these as available:
 10. **Regex search is host-controlled.** Patterns use C++ ECMAScript semantics,
     are capped at 10,000 ranges and are not protected against pathological
     backtracking. Validate or constrain patterns in trusted code.
-11. **Tree-sitter is Python-only.** The grammar is compiled in; adding another
-    language means vendoring its generated parser and highlight query. There is
-    no runtime grammar package or download path yet.
+11. **Structural grammars are compile-time.** Eight grammars are linked into
+    every build; adding another language means vendoring its parser and
+    highlight query. There is no runtime grammar package or download path yet,
+    so Kotlin, TypeScript, Swift and the remaining lexical languages still get
+    no syntax tree.
 12. **Tree traversal is per call.** `nodeCount()`, highlights and errors walk or
     query the tree each time a syntax handle is built. The tree itself is cached
     per document version and reparsed incrementally, but the handle is not a

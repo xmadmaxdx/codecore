@@ -34,6 +34,14 @@ add_library(codecore SHARED
   "${CODECORE_ROOT}/third_party/tree-sitter-python/src/scanner.c"
   "${CODECORE_ROOT}/third_party/tree-sitter-javascript/src/parser.c"
   "${CODECORE_ROOT}/third_party/tree-sitter-javascript/src/scanner.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-java/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-go/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-json/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-c/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-cpp/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-cpp/src/scanner.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-rust/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-rust/src/scanner.c"
 )
 
 set_source_files_properties(
@@ -42,6 +50,14 @@ set_source_files_properties(
   "${CODECORE_ROOT}/third_party/tree-sitter-python/src/scanner.c"
   "${CODECORE_ROOT}/third_party/tree-sitter-javascript/src/parser.c"
   "${CODECORE_ROOT}/third_party/tree-sitter-javascript/src/scanner.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-java/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-go/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-json/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-c/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-cpp/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-cpp/src/scanner.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-rust/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-rust/src/scanner.c"
   PROPERTIES COMPILE_OPTIONS "-w"
 )
 
@@ -52,6 +68,12 @@ target_include_directories(codecore PRIVATE
   "${CODECORE_ROOT}/third_party/tree-sitter/lib/src"
   "${CODECORE_ROOT}/third_party/tree-sitter-python/src"
   "${CODECORE_ROOT}/third_party/tree-sitter-javascript/src"
+  "${CODECORE_ROOT}/third_party/tree-sitter-java/src"
+  "${CODECORE_ROOT}/third_party/tree-sitter-go/src"
+  "${CODECORE_ROOT}/third_party/tree-sitter-json/src"
+  "${CODECORE_ROOT}/third_party/tree-sitter-c/src"
+  "${CODECORE_ROOT}/third_party/tree-sitter-cpp/src"
+  "${CODECORE_ROOT}/third_party/tree-sitter-rust/src"
 )
 
 target_compile_features(codecore PRIVATE cxx_std_17)

@@ -153,7 +153,13 @@ void testCAbi() {
   CHECK(cc_syntax_language_supported("python") == 1);
   CHECK(cc_syntax_language_supported("javascript") == 1);
   CHECK(cc_syntax_language_supported("js") == 1);
-  CHECK(cc_syntax_language_supported("rust") == 0);
+  CHECK(cc_syntax_language_supported("java") == 1);
+  CHECK(cc_syntax_language_supported("go") == 1);
+  CHECK(cc_syntax_language_supported("json") == 1);
+  CHECK(cc_syntax_language_supported("c") == 1);
+  CHECK(cc_syntax_language_supported("cpp") == 1);
+  CHECK(cc_syntax_language_supported("rust") == 1);
+  CHECK(cc_syntax_language_supported("kotlin") == 0);
 
   cc_engine* engine = cc_engine_create(nullptr);
   CHECK(engine != nullptr);
@@ -229,7 +235,7 @@ void testCAbi() {
   }
 
   /* A language without a bundled grammar must not fabricate a tree. */
-  CHECK(cc_document_set_language(document, cc_engine_find_language(engine, "rust")) ==
+  CHECK(cc_document_set_language(document, cc_engine_find_language(engine, "kotlin")) ==
         CC_STATUS_OK);
   cc_syntax_tree* unsupported = cc_document_syntax_tree(document);
   CHECK(unsupported == nullptr);
@@ -309,13 +315,93 @@ void testJavaScript() {
   }
 }
 
+void testStructuralGrammars() {
+  struct Sample {
+    const char* language;
+    const char* code;
+    const char* root;
+    /* nullptr when the grammar has no queryable keyword tokens (JSON). */
+    const char* keyword;
+  };
+  const Sample samples[] = {
+      {"java", "class Demo {\n  int add(int a, int b) { return a + b; }\n}\n", "program",
+       "keyword"},
+      {"go", "package main\n\nfunc add(a int, b int) int {\n\treturn a + b\n}\n",
+       "source_file", "keyword"},
+      {"json", "{\"name\": \"demo\", \"count\": 2}\n", "document", nullptr},
+      {"c", "int add(int a, int b) {\n  return a + b;\n}\n", "translation_unit",
+       "keyword"},
+      {"cpp", "class Demo {\n public:\n  int add(int a, int b) { return a + b; }\n};\n",
+       "translation_unit", "keyword"},
+      {"rust", "fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n", "source_file",
+       "keyword"},
+  };
+
+  for (const Sample& sample : samples) {
+    auto tree = codecore::SyntaxTree::parse(sample.code, sample.language);
+    CHECK(tree != nullptr);
+    if (!tree) {
+      std::printf("missing grammar: %s\n", sample.language);
+      continue;
+    }
+    CHECK(tree->languageId() == sample.language);
+    CHECK(tree->rootType() == sample.root);
+    CHECK(!tree->hasErrors());
+    CHECK(tree->nodeCount() > 5);
+    const auto highlights = tree->highlights();
+    CHECK(!highlights.empty());
+    if (highlights.empty()) {
+      std::printf("no structural highlights: %s\n", sample.language);
+    }
+    if (sample.keyword) {
+      CHECK(hasCapture(highlights, sample.keyword));
+      if (!hasCapture(highlights, sample.keyword)) {
+        std::printf("missing capture %s: %s\n", sample.keyword, sample.language);
+      }
+    }
+    for (const auto& highlight : highlights) {
+      CHECK(highlight.start < highlight.end);
+      CHECK(highlight.end <= std::strlen(sample.code));
+    }
+  }
+
+  auto alias = codecore::SyntaxTree::parse("fn main() {}\n", "rs");
+  CHECK(alias != nullptr);
+  if (alias) {
+    CHECK(alias->languageId() == "rust");
+    CHECK(alias->rootType() == "source_file");
+  }
+
+  /* Each grammar must surface real Tree-sitter errors, not just valid trees. */
+  const char* broken[] = {
+      "int add( { return 1; }\n",
+      "fn add( {\n",
+      "{\"a\": }\n",
+  };
+  const char* brokenLanguages[] = {"c", "rust", "json"};
+  for (size_t index = 0; index < 3; ++index) {
+    auto tree = codecore::SyntaxTree::parse(broken[index], brokenLanguages[index]);
+    CHECK(tree != nullptr);
+    if (tree) {
+      CHECK(tree->hasErrors());
+      CHECK(!tree->errors().empty());
+    }
+  }
+}
+
 void testUnsupportedLanguage() {
-  CHECK(!codecore::syntaxLanguageSupported("rust"));
+  CHECK(!codecore::syntaxLanguageSupported("kotlin"));
   CHECK(!codecore::syntaxLanguageSupported(""));
   CHECK(codecore::syntaxLanguageSupported("python"));
   CHECK(codecore::syntaxLanguageSupported("javascript"));
   CHECK(codecore::syntaxLanguageSupported("js"));
-  CHECK(codecore::SyntaxTree::parse("fn main() {}\n", "rust") == nullptr);
+  CHECK(codecore::syntaxLanguageSupported("java"));
+  CHECK(codecore::syntaxLanguageSupported("go"));
+  CHECK(codecore::syntaxLanguageSupported("json"));
+  CHECK(codecore::syntaxLanguageSupported("c"));
+  CHECK(codecore::syntaxLanguageSupported("cpp"));
+  CHECK(codecore::syntaxLanguageSupported("rust"));
+  CHECK(codecore::SyntaxTree::parse("val x = 1\n", "kotlin") == nullptr);
 }
 
 }  // namespace
@@ -326,6 +412,7 @@ int main() {
   testIncrementalReparse();
   testNodeAt();
   testJavaScript();
+  testStructuralGrammars();
   testUnsupportedLanguage();
   testCAbi();
 

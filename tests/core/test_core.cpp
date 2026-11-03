@@ -92,7 +92,7 @@ void testVersionAndLanguages(cc_engine* engine) {
   CHECK(cc_version_string() != nullptr);
   CHECK(std::strcmp(cc_version_string(), "0.5.0") == 0);
   CHECK(cc_abi_version() == 6);
-  CHECK(cc_engine_language_count(engine) == 23);
+  CHECK(cc_engine_language_count(engine) == 40);
   CHECK(cc_engine_find_language(engine, "python") == 0);
   CHECK(cc_engine_find_language(engine, "kotlin") == 1);
   CHECK(cc_engine_find_language(engine, "not-a-language") == -1);
@@ -904,6 +904,50 @@ void testMultiCursor(cc_engine* engine) {
   cc_document_destroy(document);
 }
 
+void testExpandedLanguages(cc_engine* engine) {
+  const char* ids[] = {
+      "perl",  "r",       "scala",  "groovy", "haskell", "elixir",
+      "erlang", "clojure", "ocaml", "fsharp", "visualbasic", "powershell",
+      "objectivec", "assembly", "matlab", "julia", "fortran",
+  };
+  for (const char* id : ids) {
+    const int32_t languageId = cc_engine_find_language(engine, id);
+    CHECK(languageId >= 23);
+    CHECK(languageId < 40);
+    if (languageId < 0) {
+      continue;
+    }
+    const cc_language_info* info =
+        cc_engine_language_at(engine, static_cast<size_t>(languageId));
+    CHECK(info != nullptr);
+    if (info) {
+      CHECK(info->extensions != nullptr && info->extensions[0] != '\0');
+    }
+
+    cc_document* document = makeDocument(engine, languageId);
+    CHECK(document != nullptr);
+    if (!document) {
+      continue;
+    }
+    const std::string sample =
+        std::strcmp(id, "assembly") == 0 ? "mov rax, 1\n" : "if value\n";
+    CHECK(cc_document_set_text(document, sample.data(), sample.size()) == CC_STATUS_OK);
+    cc_token* tokens = nullptr;
+    const size_t count =
+        cc_document_tokenize(document, 0, sample.size(), &tokens);
+    CHECK(count > 0);
+    bool keyword = false;
+    for (size_t index = 0; index < count; ++index) {
+      if (tokens[index].kind == CC_TOKEN_KEYWORD) {
+        keyword = true;
+      }
+    }
+    CHECK(keyword);
+    cc_tokens_free(tokens);
+    cc_document_destroy(document);
+  }
+}
+
 void testAllLanguages(cc_engine* engine) {
   for (size_t index = 0; index < cc_engine_language_count(engine); ++index) {
     const cc_language_info* info = cc_engine_language_at(engine, index);
@@ -969,6 +1013,7 @@ int main() {
   }
 
   testVersionAndLanguages(engine);
+  testExpandedLanguages(engine);
   testBasics(engine);
   testEditing(engine);
   testUnicode(engine);

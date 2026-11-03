@@ -51,7 +51,11 @@ void main() {
     core = CodeCore.open();
     check(core.version == '0.5.0', 'native version is 0.5.0');
     check(core.abiVersion == 6, 'C ABI version is 6');
-    check(core.languageCount == 23, 'language registry has 23 languages');
+    check(core.languageCount == 40, 'language registry has 40 languages');
+    check(core.findLanguage('perl') == 23, 'perl language id');
+    check(core.findLanguage('scala') == 25, 'scala language id');
+    check(core.findLanguage('haskell') == 27, 'haskell language id');
+    check(core.findLanguage('fortran') == 39, 'fortran language id');
     check(
       core.languages.any((language) => language.idString == 'python'),
       'python is registered',
@@ -83,10 +87,31 @@ void main() {
       core.supportsStructuralSyntax('javascript'),
       'javascript grammar is bundled',
     );
+    check(core.supportsStructuralSyntax('java'), 'java grammar is bundled');
+    check(core.supportsStructuralSyntax('go'), 'go grammar is bundled');
+    check(core.supportsStructuralSyntax('json'), 'json grammar is bundled');
+    check(core.supportsStructuralSyntax('rust'), 'rust grammar is bundled');
     check(
-      !core.supportsStructuralSyntax('rust'),
+      !core.supportsStructuralSyntax('kotlin'),
       'unbundled grammar is reported as missing',
     );
+
+    final javaDocument = core.createDocument(language: 'java');
+    javaDocument.text =
+        'class Demo { int add(int a, int b) { return a + b; } }\n';
+    final javaSyntax = javaDocument.syntaxTree();
+    check(javaSyntax != null, 'java syntax tree is available');
+    if (javaSyntax != null) {
+      check(javaSyntax.language == 'java', 'java tree language');
+      check(javaSyntax.rootType == 'program', 'java tree root');
+      check(!javaSyntax.hasErrors, 'valid java has no syntax errors');
+      check(
+        javaSyntax.highlights.any((h) => h.capture == 'keyword'),
+        'java keyword highlight',
+      );
+      javaSyntax.dispose();
+    }
+    javaDocument.dispose();
 
     final syntax = document.syntaxTree();
     check(syntax != null, 'python syntax tree is available');
@@ -133,7 +158,7 @@ void main() {
     }
     jsSyntaxDoc.dispose();
 
-    final noGrammarDoc = core.createDocument(language: 'rust');
+    final noGrammarDoc = core.createDocument(language: 'kotlin');
     check(noGrammarDoc.syntaxTree() == null, 'no grammar means no syntax tree');
     noGrammarDoc.dispose();
 

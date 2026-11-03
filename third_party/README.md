@@ -30,6 +30,25 @@ grammars are kept.
 - Covers JavaScript and JSX; `grammar.js` is not kept because the generated
   parser is what the build consumes.
 
+## Additional grammars
+
+The same policy applies to the remaining bundled grammars, vendored on
+2026-11-03:
+
+| Directory | Source | License |
+|---|---|---|
+| `tree-sitter-c` | https://github.com/tree-sitter/tree-sitter-c | MIT |
+| `tree-sitter-cpp` | https://github.com/tree-sitter/tree-sitter-cpp | MIT |
+| `tree-sitter-go` | https://github.com/tree-sitter/tree-sitter-go | MIT |
+| `tree-sitter-java` | https://github.com/tree-sitter/tree-sitter-java | MIT |
+| `tree-sitter-json` | https://github.com/tree-sitter/tree-sitter-json | MIT |
+| `tree-sitter-rust` | https://github.com/tree-sitter/tree-sitter-rust | MIT |
+
+Each keeps `src/` (generated parser, optional external scanner, node types),
+`queries/highlights.scm` and `LICENSE`. Non-runtime files such as bindings,
+tests and examples are not committed. C++ and Rust include `scanner.c`; Java,
+Go, JSON and C use the generated parser only.
+
 CodeCore's highlight queries live in `core/syntax/*_highlights.h`. They are
 predicate-free subsets of the upstream queries so the C query API can evaluate
 them without a predicate engine.

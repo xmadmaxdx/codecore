@@ -57,8 +57,9 @@ javac -d build/jni/classes \
 java -Djava.library.path=build/jni -cp build/jni/classes JniSmokeTest
 ```
 
-Result: **126 checks, 0 failures**. The Java harness uses the same JNI symbols
-the Kotlin object declares, including structural syntax.
+Result: **175 checks, 0 failures**. The Java harness uses the same JNI symbols
+the Kotlin object declares, including structural trees and errors for every
+bundled grammar.
 
 ## Usage
 
@@ -95,9 +96,11 @@ document.close()
 
 ## Structural syntax
 
-Tree-sitter is bundled for `python` and `javascript` (including JSX and the
-`js`/`jsx`/`mjs`/`cjs` aliases). `syntaxTree()` returns `null` for a language
-without a grammar; lexical tokens still work for every language.
+Tree-sitter is bundled for `python`, `javascript` (including JSX and the
+`js`/`jsx`/`mjs`/`cjs` aliases), `java`, `go`, `json`, `c`, `cpp` and `rust`.
+Aliases such as `rs`, `golang` and `c++` resolve to the canonical grammar id.
+`syntaxTree()` returns `null` for a language without a grammar; lexical tokens
+still work for every language.
 
 ```kotlin
 if (CodeCore.supportsStructuralSyntax("python")) {
@@ -273,7 +276,8 @@ are provided. Results are raw JSON and `LspResult.isError` marks error replies.
 - Regex search uses native ECMAScript semantics and is capped at 10,000
   matches; pathological patterns are not sandboxed.
 - No editor rendering, theme integration, or lifecycle-aware controller.
-- Structural syntax is Python and JavaScript only; other languages use the
-  lexical tokenizer.
+- Structural syntax is compiled in for Python, JavaScript, Java, Go, JSON, C,
+  C++ and Rust. The other 32 languages use the lexical tokenizer and return
+  `null` from `syntaxTree()`.
 - No semantic intelligence or runtime management. Execution runs only what the
   host supplies; no interpreter is bundled.

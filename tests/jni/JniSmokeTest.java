@@ -36,6 +36,15 @@ public final class JniSmokeTest {
         }
     }
 
+    private static boolean hasCapture(String[] lines, String capture) {
+        for (String line : lines) {
+            if (line.endsWith("\u001F" + capture)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean contains(int[] packed, int kind) {
         for (int index = 0; index + 2 < packed.length; index += 3) {
             if (packed[index + 2] == kind) {
@@ -69,8 +78,12 @@ public final class JniSmokeTest {
         check(NativeCodeCore.nativeSyntaxLanguageSupported("javascript"),
                 "javascript grammar");
         check(NativeCodeCore.nativeSyntaxLanguageSupported("js"), "javascript alias");
-        check(!NativeCodeCore.nativeSyntaxLanguageSupported("rust"),
-                "rust has no bundled grammar");
+        check(NativeCodeCore.nativeSyntaxLanguageSupported("java"), "java grammar");
+        check(NativeCodeCore.nativeSyntaxLanguageSupported("go"), "go grammar");
+        check(NativeCodeCore.nativeSyntaxLanguageSupported("json"), "json grammar");
+        check(NativeCodeCore.nativeSyntaxLanguageSupported("rust"), "rust grammar");
+        check(!NativeCodeCore.nativeSyntaxLanguageSupported("kotlin"),
+                "kotlin has no bundled grammar");
         long syntax = NativeCodeCore.nativeSyntaxTree(document);
         check(syntax != 0L, "syntax tree");
         check("python".equals(NativeCodeCore.nativeSyntaxLanguage(syntax)), "syntax language");
@@ -89,6 +102,51 @@ public final class JniSmokeTest {
         check(keywordHighlight, "keyword syntax highlight");
         check(NativeCodeCore.nativeSyntaxErrors(syntax).length == 0, "empty syntax errors");
         NativeCodeCore.nativeSyntaxTreeDestroy(syntax);
+
+        String[][] grammars = {
+                {"java", "class Demo { int add(int a, int b) { return a + b; } }\n", "program", "keyword"},
+                {"go", "package main\n\nfunc add(a int, b int) int { return a + b }\n", "source_file", "keyword"},
+                {"json", "{\"name\": \"demo\", \"count\": 2}\n", "document", "string"},
+                {"c", "int add(int a, int b) { return a + b; }\n", "translation_unit", "keyword"},
+                {"cpp", "class Demo { int add(int a, int b) { return a + b; } };\n", "translation_unit", "keyword"},
+                {"rust", "fn add(a: i32, b: i32) -> i32 { a + b }\n", "source_file", "keyword"},
+        };
+        for (String[] grammar : grammars) {
+            long handle = NativeCodeCore.nativeCreate(grammar[0], 4, true);
+            check(handle != 0L, grammar[0] + " document");
+            if (handle == 0L) {
+                continue;
+            }
+            check(NativeCodeCore.nativeSetText(handle, grammar[1]) == 0,
+                    grammar[0] + " set text");
+            long tree = NativeCodeCore.nativeSyntaxTree(handle);
+            check(tree != 0L, grammar[0] + " tree");
+            if (tree != 0L) {
+                check(grammar[0].equals(NativeCodeCore.nativeSyntaxLanguage(tree)),
+                        grammar[0] + " tree language");
+                check(grammar[2].equals(NativeCodeCore.nativeSyntaxRootType(tree)),
+                        grammar[0] + " tree root");
+                check(!NativeCodeCore.nativeSyntaxHasErrors(tree),
+                        grammar[0] + " valid code");
+                check(hasCapture(NativeCodeCore.nativeSyntaxHighlights(tree), grammar[3]),
+                        grammar[0] + " highlight capture");
+                NativeCodeCore.nativeSyntaxTreeDestroy(tree);
+            }
+            NativeCodeCore.nativeDestroy(handle);
+        }
+
+        long brokenJson = NativeCodeCore.nativeCreate("json", 2, true);
+        NativeCodeCore.nativeSetText(brokenJson, "{\"a\": }\n");
+        long brokenJsonTree = NativeCodeCore.nativeSyntaxTree(brokenJson);
+        check(brokenJsonTree != 0L, "broken json tree");
+        if (brokenJsonTree != 0L) {
+            check(NativeCodeCore.nativeSyntaxHasErrors(brokenJsonTree),
+                    "broken json reports errors");
+            check(NativeCodeCore.nativeSyntaxErrors(brokenJsonTree).length > 0,
+                    "broken json error list");
+            NativeCodeCore.nativeSyntaxTreeDestroy(brokenJsonTree);
+        }
+        NativeCodeCore.nativeDestroy(brokenJson);
 
         String[] completions = NativeCodeCore.nativeComplete(document, source.length());
         check(completions.length > 0, "completion results");

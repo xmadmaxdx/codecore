@@ -346,9 +346,19 @@ cc_execution_destroy(run);
 
 ## Structural syntax (Tree-sitter)
 
-Only languages with a bundled grammar produce a tree. Currently that is Python
-(`python`, `py`, `python3`) and JavaScript (`javascript`, `js`, `jsx`, `mjs`,
-`cjs`; JSX parses with the JavaScript grammar).
+Only languages with a bundled grammar produce a tree. Eight grammars are
+compiled in:
+
+| Language | Accepted ids | Root node |
+|---|---|---|
+| Python | `python`, `py`, `python3` | `module` |
+| JavaScript | `javascript`, `js`, `jsx`, `mjs`, `cjs` | `program` |
+| Java | `java` | `program` |
+| Go | `go`, `golang` | `source_file` |
+| JSON | `json` | `document` |
+| C | `c`, `h` | `translation_unit` |
+| C++ | `cpp`, `c++`, `cc`, `cxx`, `hpp` | `translation_unit` |
+| Rust | `rust`, `rs` | `source_file` |
 
 ```c
 cc_syntax_tree* tree = cc_document_syntax_tree(doc);
@@ -375,8 +385,11 @@ if (tree) {
   unchanged version reuse the cached tree; building the handle still walks or
   queries the tree for counts and ranges.
 - Returns `NULL` when the document's language has no bundled grammar. Check
-  `cc_syntax_language_supported("python")` or
-  `cc_syntax_language_supported("javascript")` when the grammar is required.
+  `cc_syntax_language_supported("java")`, `"go"`, `"json"`, `"c"`, `"cpp"`,
+  `"rust"`, `"python"` or `"javascript"` when the grammar is required.
+- `cc_syntax_tree_has_errors` and `cc_syntax_tree_error_at` report real
+  Tree-sitter `ERROR` and `MISSING` nodes, including malformed Java, Go, JSON,
+  C, C++ and Rust source.
 - Highlight and error strings point into the tree handle and stay valid until
   `cc_syntax_tree_destroy`.
 - `start`/`end` are UTF-8 byte offsets. Row/column values in `cc_syntax_error`

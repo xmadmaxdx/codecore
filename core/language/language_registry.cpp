@@ -342,6 +342,209 @@ LanguageRegistry::LanguageRegistry() {
         {"--"}, "--[[", "]]", "'\"");
   }
 
+  {
+    [[maybe_unused]] Language& language = add(
+        23, "perl", "Perl", ".pl,.pm,.t",
+        splitWords("break continue do else elsif for foreach given goto if last local my next no "
+                   "our package redo require return sub unless until use when while and or not eq "
+                   "ne lt gt le ge cmp"),
+        splitWords("scalar array hash"),
+        splitWords("print printf say chomp chop split join push pop shift unshift keys values each "
+                   "sort reverse map grep length substr index"),
+        {"#"}, "", "", "'\"");
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        24, "r", "R", ".r,.R,.Rmd",
+        splitWords("break else for function if in next repeat return while TRUE FALSE NULL NA Inf "
+                   "NaN"),
+        splitWords("numeric character logical integer double complex list matrix data.frame factor"),
+        splitWords("print cat paste c mean median sd sum length seq rep library require"),
+        {"#"}, "", "", "'\"");
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        25, "scala", "Scala", ".scala,.sc",
+        splitWords("abstract case catch class def do else extends final finally for forSome if "
+                   "implicit import lazy match new object override package private protected return "
+                   "sealed super this throw trait try type val var while with yield given using enum "
+                   "export then"),
+        splitWords("Any AnyRef AnyVal Boolean Byte Char Double Float Int Long Nothing Short String "
+                   "Unit List Map Set Option Either Future"),
+        splitWords("println print require assert map flatMap filter fold"),
+        {"//"}, "/*", "*/", "'\"");
+    language.tripleQuotes = true;
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        26, "groovy", "Groovy", ".groovy,.gradle,.gvy",
+        splitWords("as assert break case catch class const continue def default do else enum extends "
+                   "finally for goto if implements import in instanceof interface native new package "
+                   "private protected public return static super switch synchronized this throw "
+                   "throws trait try while"),
+        splitWords("Boolean Byte Char Double Float Integer Long Object Short String List Map Set "
+                   "Closure"),
+        splitWords("println print each collect find findAll inject"),
+        {"//"}, "/*", "*/", "'\"");
+    language.tripleQuotes = true;
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        27, "haskell", "Haskell", ".hs,.lhs",
+        splitWords("case class data default deriving do else if import in infix infixl infixr "
+                   "instance let module newtype of then type where qualified as hiding forall "
+                   "foreign"),
+        splitWords("Bool Char Double Either Float IO Int Integer Maybe Ordering String Word"),
+        splitWords("map filter foldl foldr head tail null length print putStrLn show read"),
+        {"--"}, "{-", "-}", "'\"");
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        28, "elixir", "Elixir", ".ex,.exs",
+        splitWords("after alias and case catch cond def defmodule defp defmacro defstruct do else "
+                   "end fn for if import in not or quote raise receive require rescue try unless "
+                   "unquote use when with"),
+        splitWords("Atom BitString Float Function Integer List Map PID Port Reference Tuple"),
+        splitWords("IO.puts IO.inspect Enum.map Enum.filter Enum.reduce String.length Kernel"),
+        {"#"}, "", "", "'\"");
+    language.tripleQuotes = true;
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        29, "erlang", "Erlang", ".erl,.hrl",
+        splitWords("after and andalso begin case catch cond end fun if let not of or orelse "
+                   "receive try when bnot div rem band bor bxor"),
+        splitWords("atom binary bitstring boolean byte char float function integer list map nil "
+                   "number pid port reference tuple"),
+        splitWords("io format lists map length spawn self"),
+        {"%"}, "", "", "'\"");
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        30, "clojure", "Clojure", ".clj,.cljs,.cljc,.edn",
+        splitWords("def defn defmacro defmulti defmethod if if-not let letfn loop recur fn do when "
+                   "when-not when-let cond case try catch finally throw new ns require import quote "
+                   "var"),
+        splitWords("long int double float boolean string keyword symbol vector list map set"),
+        splitWords("println print str map filter reduce apply assoc conj get"),
+        {";"}, "", "", "'\"");
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        31, "ocaml", "OCaml", ".ml,.mli",
+        splitWords("and as assert begin class constraint do done downto else end exception external "
+                   "false for fun function functor if in include inherit initializer lazy let match "
+                   "method module mutable new object of open or private rec sig struct then to true "
+                   "try type val virtual when while with"),
+        splitWords("bool char float int int32 int64 list nativeint option string unit bytes"),
+        splitWords("print_endline print_string List.map List.filter Option.map"),
+        {}, "(*", "*)", "'\"");
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        32, "fsharp", "F#", ".fs,.fsi,.fsx",
+        splitWords("abstract and as assert base begin class default delegate do done downcast downto "
+                   "elif else end exception extern false finally fixed for fun function global if in "
+                   "inherit inline interface internal lazy let match member module mutable namespace "
+                   "new null of open or override private public rec return select static struct then "
+                   "to true try type upcast use val void when while with yield"),
+        splitWords("bool byte char decimal double float int int64 list map option seq string uint"),
+        splitWords("printfn printf failwith List.map Seq.map Option.map"),
+        {"//"}, "(*", "*)", "'\"");
+    language.tripleQuotes = true;
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        33, "visualbasic", "Visual Basic", ".vb",
+        splitWords("AddHandler AddressOf And AndAlso As ByRef ByVal Call Case Catch Class Const "
+                   "Continue Declare Default Delegate Dim DirectCast Do Each Else ElseIf End Enum Erase "
+                   "Error Event Exit False Finally For Friend Function Get GetType Global GoSub GoTo "
+                   "Handles If Implements Imports In Inherits Interface Is IsNot Let Lib Like Loop Me "
+                   "Mod Module MustInherit MustOverride MyBase MyClass Namespace New Next Not Nothing "
+                   "Object Of On Operator Option Optional Or OrElse Out Overloads Overridable "
+                   "Overrides ParamArray Partial Private Property Protected Public RaiseEvent ReadOnly "
+                   "ReDim REM RemoveHandler Resume Return Select Set Shadows Shared Static Step Stop "
+                   "Structure Sub SyncLock Then Throw To True Try TryCast TypeOf Using Variant Wend "
+                   "When While Widening With WithEvents WriteOnly Xor"),
+        splitWords("Boolean Byte Char Date Decimal Double Integer Long Object SByte Short Single String "
+                   "UInteger ULong UShort"),
+        splitWords("Console.WriteLine Console.ReadLine MsgBox"),
+        {"'"}, "", "", "\"");
+    language.caseInsensitive = true;
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        34, "powershell", "PowerShell", ".ps1,.psm1,.psd1",
+        splitWords("begin break catch class continue data define do dynamicparam else elseif end enum "
+                   "exit filter finally for foreach from function hidden if in param process return "
+                   "static switch throw trap try until using var while workflow"),
+        splitWords("bool byte char datetime decimal double float int long string array hashtable "
+                   "pscustomobject"),
+        splitWords("Write-Host Write-Output Get-ChildItem Get-Content Set-Content Where-Object "
+                   "ForEach-Object Select-Object"),
+        {"#"}, "<#", "#>", "'\"");
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        35, "objectivec", "Objective-C", ".m,.mm",
+        splitWords("auto break case char const continue default do double else enum extern float for "
+                   "goto if inline int long register restrict return short signed sizeof static struct "
+                   "switch typedef union unsigned void volatile while interface implementation end "
+                   "class protocol property synthesize dynamic public private protected try catch "
+                   "finally throw selector encode id self super nil YES NO"),
+        splitWords("NSInteger NSUInteger CGFloat BOOL NSString NSArray NSDictionary NSObject"),
+        splitWords("NSLog alloc init new copy mutableCopy"),
+        {"//"}, "/*", "*/", "'\"");
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        36, "assembly", "Assembly", ".asm,.s,.inc",
+        splitWords("mov add sub mul imul div idiv inc dec and or xor not shl shr sal sar cmp test jmp "
+                   "je jne jz jnz jg jge jl jle call ret push pop lea nop int syscall hlt"),
+        splitWords("rax rbx rcx rdx rsi rdi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15 eax ebx ecx edx "
+                   "ax bx cx dx al bl cl dl ah bh ch dh"),
+        splitWords("section global extern db dw dd dq equ times"),
+        {";", "#"}, "", "", "'\"");
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        37, "matlab", "MATLAB", ".m",
+        splitWords("break case catch classdef continue else elseif end for function global if "
+                   "otherwise parfor persistent return spmd switch try while"),
+        splitWords("double single int8 int16 int32 int64 uint8 uint16 uint32 uint64 logical char "
+                   "string cell struct table function_handle"),
+        splitWords("disp fprintf sprintf plot figure zeros ones size length numel sum mean"),
+        {"%"}, "%{", "%}", "'\"");
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        38, "julia", "Julia", ".jl",
+        splitWords("abstract baremodule begin break catch const continue do else elseif end export "
+                   "finally for function global if import in let local macro module quote return "
+                   "struct try using while where mutable primitive type"),
+        splitWords("Any Bool Char Float16 Float32 Float64 Int Int8 Int16 Int32 Int64 Integer "
+                   "Nothing String Symbol Tuple Vector Matrix Dict"),
+        splitWords("println print show length push pop map filter reduce sum"),
+        {"#"}, "#=", "=#", "'\"");
+    language.tripleQuotes = true;
+  }
+  {
+    [[maybe_unused]] Language& language = add(
+        39, "fortran", "Fortran", ".f,.f90,.f95,.f03,.f08",
+        splitWords("allocatable allocate assign associate asynchronous backspace bind block call case "
+                   "class close common contains continue cycle data deallocate default dimension do "
+                   "else elseif elsewhere end enddo endif entry enum enumerator equivalence exit "
+                   "extends external final flush forall format function generic goto if implicit "
+                   "import include inquire intent interface intrinsic module namelist none nullify "
+                   "only open operator optional parameter pause pointer print private procedure "
+                   "program public pure read real rec recursive result return rewind save select "
+                   "sequence stop subroutine target then type use value volatile wait where while write"),
+        splitWords("integer real double precision complex logical character"),
+        splitWords("print write read open close allocate deallocate"),
+        {"!"}, "", "", "'\"");
+    language.caseInsensitive = true;
+  }
+
   for (auto& language : languages_) {
     language->finalize();
   }

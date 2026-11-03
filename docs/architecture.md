@@ -141,7 +141,7 @@ No AI provider is implemented. The host supplies suggestions.
 
 ## Language layer
 
-`LanguageRegistry` builds 23 immutable language definitions once per engine.
+`LanguageRegistry` builds 40 immutable language definitions once per engine.
 Documents hold a `shared_ptr<const Language>`, so they remain valid if the engine
 is destroyed.
 
@@ -152,7 +152,7 @@ HTML/XML tags and CSS properties.
 The lexer is explicitly **not** Tree-sitter. It does not build a syntax tree
 or understand scopes or types. Capability flags advertise syntax, completion,
 diagnostics and folding only. Structural parsing is a separate layer and is
-currently bundled for Python and JavaScript.
+bundled for Python, JavaScript, Java, Go, JSON, C, C++ and Rust.
 
 ## Language services
 
@@ -179,10 +179,16 @@ and one line in each CMake source list; nothing above this layer changes.
 
 Current table:
 
-| Grammar | Accepted ids | Query |
-|---|---|---|
-| Python | `python`, `py`, `python3` | `python_highlights.h` |
-| JavaScript (incl. JSX) | `javascript`, `js`, `jsx`, `mjs`, `cjs` | `javascript_highlights.h` |
+| Grammar | Accepted ids | Root | Query |
+|---|---|---|---|
+| Python | `python`, `py`, `python3` | `module` | `python_highlights.h` |
+| JavaScript (incl. JSX) | `javascript`, `js`, `jsx`, `mjs`, `cjs` | `program` | `javascript_highlights.h` |
+| Java | `java` | `program` | `java_highlights.h` |
+| Go | `go`, `golang` | `source_file` | `go_highlights.h` |
+| JSON | `json` | `document` | `json_highlights.h` |
+| C | `c`, `h` | `translation_unit` | `c_highlights.h` |
+| C++ | `cpp`, `c++`, `cc`, `cxx`, `hpp` | `translation_unit` | `cpp_highlights.h` |
+| Rust | `rust`, `rs` | `source_file` | `rust_highlights.h` |
 
 Aliases resolve to the canonical id, so a tree parsed from `js` reports
 `javascript`. Unknown ids return no tree rather than a fabricated one.
@@ -200,10 +206,15 @@ Aliases resolve to the canonical id, so a tree parsed from `js` reports
 - Trees are immutable and safe to read across threads; query cursors are
   created per call.
 
-The parser does not replace the lexer. Every other language continues to use
-`core/language`. There is no grammar loader, no download path and no public
-Tree-sitter query API. Grammar additions are compiled in, not downloaded,
-until a grammar-pack mechanism exists.
+The parser does not replace the lexer. The remaining 32 language definitions
+continue to use `core/language`. There is no grammar loader, no download path
+and no public Tree-sitter query API. Grammar additions are compiled in, not
+downloaded, until a grammar-pack mechanism exists.
+
+Query strings are parsed by Tree-sitter at first use. A query that confuses a
+named node with an anonymous token fails as a whole and yields no highlights,
+while parsing still succeeds. The grammar test suite parses valid and malformed
+source for every bundled language so this cannot regress silently.
 
 ## Background analysis
 
@@ -348,5 +359,6 @@ native handle. The native session is fully usable without either SDK.
 - **Tree-sitter for supported languages** gives a real syntax tree and
   incremental reparse without making every language pay for a grammar.
 - **C ABI** keeps Dart and Kotlin independent of C++ ABI details.
-- **Lexical Level 1** delivers useful highlighting for 23 languages without
-  grammar binaries; Tree-sitter remains the planned upgrade.
+- **Lexical Level 1** delivers useful highlighting for all 40 definitions
+  without grammar binaries; Tree-sitter adds structural parsing where a grammar
+  is compiled in.
