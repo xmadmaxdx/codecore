@@ -57,7 +57,7 @@ javac -d build/jni/classes \
 java -Djava.library.path=build/jni -cp build/jni/classes JniSmokeTest
 ```
 
-Result: **112 checks, 0 failures**. The Java harness uses the same JNI symbols
+Result: **126 checks, 0 failures**. The Java harness uses the same JNI symbols
 the Kotlin object declares, including structural syntax.
 
 ## Usage
@@ -126,6 +126,40 @@ if (CodeCore.supportsStructuralSyntax("python")) {
   edits reparse incrementally from the previous tree.
 - Highlights are structural, not semantic. There is no name or type resolution.
 
+## Execution
+
+`startExecution` runs a child process. CodeCore ships no runtime; pass the
+command the host wants to run. Poll output and close the session when done.
+
+```kotlin
+val run = CodeCore.startExecution(
+    command = "python3",
+    arguments = listOf("-c", "print('hello')"),
+    timeoutMs = 10_000,
+)
+
+while (true) {
+    val event = run.poll()
+    if (event == null) {
+        Thread.sleep(5)
+        continue
+    }
+    if (event.kind == ExecutionEventKind.OUTPUT) {
+        print(event.data)
+    } else {
+        println("exit ${event.exitCode} cancelled=${event.cancelled}")
+        break
+    }
+}
+run.close()
+```
+
+`write` sends stdin, `closeStdin` sends EOF, `cancel` terminates the process
+tree, `waitFor` blocks with a timeout, and `exitCode` is -1 until exit. Output
+is bounded (1 MiB by default); keep polling to avoid backpressure. The exit
+event is delivered after all queued output. On Android, app-data executables
+are blocked by platform policy; package runtimes as native libraries.
+
 ## Agent-facing API
 
 ```kotlin
@@ -160,6 +194,9 @@ closed.
 ## API surface
 
 - `CodeCore.version`, `CodeCore.createDocument`, `CodeCore.createLsp`,
+  `CodeCore.startExecution`
+- `CodeCoreExecution`: `poll`, `write`, `closeStdin`, `cancel`, `waitFor`,
+  `isRunning`, `exitCode`, `close`,
   `CodeCore.supportsStructuralSyntax`
 - `CodeCoreLsp`: `initialize`, `feed`, `takeOutgoing`, `takeResult`,
   `takeDiagnostics`, `isInitialized`, `serverCapabilities`, `lastError`,
@@ -238,4 +275,5 @@ are provided. Results are raw JSON and `LspResult.isError` marks error replies.
 - No editor rendering, theme integration, or lifecycle-aware controller.
 - Structural syntax is Python and JavaScript only; other languages use the
   lexical tokenizer.
-- No semantic intelligence or execution.
+- No semantic intelligence or runtime management. Execution runs only what the
+  host supplies; no interpreter is bundled.

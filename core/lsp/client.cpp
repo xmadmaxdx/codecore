@@ -77,7 +77,7 @@ void LspClient::initialize(std::string rootUri) {
 
   JsonValue clientInfo = object();
   clientInfo.set("name", JsonValue("CodeCore"));
-  clientInfo.set("version", JsonValue("0.4.0"));
+  clientInfo.set("version", JsonValue("0.5.0"));
 
   JsonValue params = object();
   params.set("processId", JsonValue());

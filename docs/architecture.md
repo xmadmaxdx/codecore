@@ -258,6 +258,41 @@ Android, where spawning arbitrary language-server binaries is restricted.
 No language servers are bundled. The layer is lexical/semantic infrastructure,
 not a replacement for the CodeCore document model or completion engine.
 
+## Local execution
+
+`core/exec` adds one child process per `ExecutionSession`. It is deliberately
+independent of documents, analysis and the LSP client: the host supplies an
+executable, CodeCore owns only the process plumbing.
+
+- `ExecutionSession::start` creates three pipes (stdin, stdout, stderr), spawns
+  the child, and starts two reader threads plus one waiter thread.
+- Readers enqueue `ExecutionEvent` chunks behind a mutex. The queue is bounded
+  by `maxQueuedOutputBytes` (default 1 MiB); when full, readers block, which
+  propagates backpressure through the OS pipe instead of growing memory.
+- `poll()` drains output in enqueue order and emits the exit event only after
+  both readers have finished. Per-stream order is exact; cross-stream
+  interleaving is enqueue order.
+- `wait()` uses a condition variable; the waiter thread checks cancellation and
+  timeout in short slices, terminates the process tree, then records the exit
+  code and state.
+- Windows uses `CreateProcessW` with an explicit inheritable-handle list, a
+  job object with kill-on-close, and pipes. POSIX uses `fork`/`execve` with
+  pre-built argv/envp, a process group, and `waitpid(WNOHANG)` polling. Only
+  async-signal-safe calls run in the POSIX child.
+- Environment overrides are merged into a copy of the inherited environment;
+  the child never receives a partially constructed block.
+- Shell mode is explicit and passes the command verbatim to `cmd.exe` or
+  `/bin/sh`; ordinary execution never interpolates a shell.
+
+No compiler, interpreter or runtime is linked into the library. On Android,
+app-data executables are blocked by platform policy, so runtimes must be
+packaged as native libraries or provided by the host; the execution API does
+not work around that restriction.
+
+The C ABI exposes the same surface as `cc_execution_*`. Dart and Kotlin wrap it
+as `CodeCoreExecution`; both wrappers poll the same events and own the same
+native handle. The native session is fully usable without either SDK.
+
 ## C ABI
 
 `native/include/codecore/codecore.h` is the only supported native boundary.
@@ -266,8 +301,8 @@ not a replacement for the CodeCore document model or completion engine.
 - Returned arrays and strings are allocated through `cc_alloc` and freed with the
   matching `cc_*_free`.
 - C++ types and exceptions never cross the boundary.
-- The ABI is versioned separately from the library. Current: ABI `5`, library
-  `0.4.0`.
+- The ABI is versioned separately from the library. Current: ABI `6`, library
+  `0.5.0`.
 
 ## Threading
 
@@ -289,15 +324,16 @@ not a replacement for the CodeCore document model or completion engine.
 - **Dart** (`sdk/flutter`): hand-written `dart:ffi`; no package dependencies.
   The package includes an Android Gradle/CMake plugin that builds
   `libcodecore.so` from the shared sources. `SyntaxTree` exposes structural
-  highlights and syntax errors for bundled grammars. `CodeCoreLsp` pumps LSP
-  frames without a bundled transport. Publishing needs the native sources vendored
-  into the package or a prebuilt AAR.
+  highlights and syntax errors for bundled grammars. `CodeCoreExecution`
+  streams local process output. `CodeCoreLsp` pumps LSP frames without a
+  bundled transport. Publishing needs the native sources vendored into the
+  package or a prebuilt AAR.
 - **Kotlin** (`sdk/kotlin`): JNI bridge with explicit UTF-8/UTF-16 conversion.
   The Gradle wrapper and NDK version are included. `:assembleDebug` compiles the
   Kotlin SDK and native sources into a debug AAR. `SyntaxTree` exposes
-  structural highlights and syntax errors for bundled grammars. `CodeCoreLsp`
-  exposes the same protocol surface; the JNI bridge is smoke-tested through a
-  Java harness.
+  structural highlights and syntax errors for bundled grammars.
+  `CodeCoreExecution` streams local process output. `CodeCoreLsp` exposes the
+  same protocol surface; the JNI bridge is smoke-tested through a Java harness.
 
 ## Why these choices
 

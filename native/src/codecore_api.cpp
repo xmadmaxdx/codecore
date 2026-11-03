@@ -11,6 +11,7 @@
 #include "core/analysis/background.h"
 #include "core/document/document.h"
 #include "core/engine/engine.h"
+#include "core/exec/execution.h"
 #include "core/language/language.h"
 #include "core/viewport/viewport.h"
 
@@ -32,6 +33,10 @@ struct cc_snapshot {
 
 struct cc_analyzer {
   codecore::BackgroundAnalyzer analyzer;
+};
+
+struct cc_execution {
+  std::unique_ptr<codecore::ExecutionSession> session;
 };
 
 struct cc_syntax_tree {
@@ -255,7 +260,7 @@ extern "C" {
 
 uint32_t cc_abi_version(void) { return CODECORE_ABI_VERSION; }
 
-const char* cc_version_string(void) { return "0.4.0"; }
+const char* cc_version_string(void) { return "0.5.0"; }
 
 void* cc_alloc(size_t size) { return std::malloc(size == 0 ? 1 : size); }
 
@@ -1268,5 +1273,128 @@ void cc_document_set_change_listener(cc_document* document, cc_change_listener l
   document->user_data = user_data;
   document->document->setChangeListener(listener ? documentChangeThunk : nullptr, document);
 }
+
+uint8_t cc_execution_supported(void) { return 1; }
+
+cc_execution* cc_execution_start(const cc_execution_options* options, char** out_error) {
+  if (out_error) {
+    *out_error = nullptr;
+  }
+  if (!options || !options->command ||
+      (options->arg_count > 0 && !options->args) ||
+      (options->env_count > 0 && (!options->env_keys || !options->env_values))) {
+    if (out_error) {
+      *out_error = duplicateString("invalid execution options");
+    }
+    return nullptr;
+  }
+
+  codecore::ExecutionOptions internal;
+  internal.command = options->command;
+  internal.shell = options->shell != 0;
+  internal.timeoutMs = options->timeout_ms;
+  if (options->max_queued_bytes > 0) {
+    internal.maxQueuedOutputBytes = options->max_queued_bytes;
+  }
+  if (options->working_directory) {
+    internal.workingDirectory = options->working_directory;
+  }
+  internal.arguments.reserve(options->arg_count);
+  for (size_t index = 0; index < options->arg_count; ++index) {
+    internal.arguments.emplace_back(options->args[index] ? options->args[index] : "");
+  }
+  internal.environment.reserve(options->env_count);
+  for (size_t index = 0; index < options->env_count; ++index) {
+    internal.environment.emplace_back(
+        options->env_keys[index] ? options->env_keys[index] : "",
+        options->env_values[index] ? options->env_values[index] : "");
+  }
+
+  std::string error;
+  std::unique_ptr<codecore::ExecutionSession> session =
+      codecore::ExecutionSession::start(internal, &error);
+  if (!session) {
+    if (out_error) {
+      *out_error = duplicateString(error);
+    }
+    return nullptr;
+  }
+  auto* wrapper = new (std::nothrow) cc_execution();
+  if (!wrapper) {
+    if (out_error) {
+      *out_error = duplicateString("out of memory");
+    }
+    return nullptr;
+  }
+  wrapper->session = std::move(session);
+  return wrapper;
+}
+
+uint8_t cc_execution_poll(cc_execution* execution, cc_execution_event* out_event) {
+  if (!execution || !execution->session || !out_event) {
+    return 0;
+  }
+  std::memset(out_event, 0, sizeof(*out_event));
+  codecore::ExecutionEvent event;
+  if (!execution->session->poll(&event)) {
+    return 0;
+  }
+  out_event->kind = static_cast<uint32_t>(event.kind);
+  out_event->stream = static_cast<uint32_t>(event.stream);
+  out_event->sequence = event.sequence;
+  out_event->exit_code = event.exitCode;
+  out_event->cancelled = event.cancelled ? 1 : 0;
+  out_event->timed_out = event.timedOut ? 1 : 0;
+  if (event.kind == codecore::ExecutionEvent::Kind::Output) {
+    char* data = static_cast<char*>(cc_alloc(event.data.size() + 1));
+    if (!data) {
+      return 0;
+    }
+    std::memcpy(data, event.data.data(), event.data.size());
+    data[event.data.size()] = '\0';
+    out_event->data = data;
+    out_event->length = event.data.size();
+  }
+  return 1;
+}
+
+cc_status cc_execution_write(cc_execution* execution, const char* data, size_t length) {
+  if (!execution || !execution->session || (!data && length > 0)) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  if (execution->session->write(std::string_view(data ? data : "", length))) {
+    return CC_STATUS_OK;
+  }
+  return execution->session->running() ? CC_STATUS_IO_ERROR : CC_STATUS_NOT_RUNNING;
+}
+
+void cc_execution_close_stdin(cc_execution* execution) {
+  if (execution && execution->session) {
+    execution->session->closeStdin();
+  }
+}
+
+void cc_execution_cancel(cc_execution* execution) {
+  if (execution && execution->session) {
+    execution->session->cancel();
+  }
+}
+
+uint8_t cc_execution_wait(cc_execution* execution, uint32_t timeout_ms) {
+  if (!execution || !execution->session) {
+    return 0;
+  }
+  return execution->session->wait(timeout_ms) ? 1 : 0;
+}
+
+uint8_t cc_execution_is_running(const cc_execution* execution) {
+  return execution && execution->session && execution->session->running() ? 1 : 0;
+}
+
+int32_t cc_execution_exit_code(const cc_execution* execution) {
+  return execution && execution->session ? execution->session->exitCode() : -1;
+}
+
+void cc_execution_destroy(cc_execution* execution) { delete execution; }
 
 }  // extern "C"

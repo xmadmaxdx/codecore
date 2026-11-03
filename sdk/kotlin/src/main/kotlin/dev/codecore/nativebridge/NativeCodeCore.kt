@@ -283,4 +283,46 @@ object NativeCodeCore {
 
     @JvmStatic
     external fun nativeLspExit(handle: Long)
+
+    @JvmStatic
+    external fun nativeExecutionSupported(): Boolean
+
+    @JvmStatic
+    external fun nativeExecutionStart(
+        command: String,
+        args: Array<String>,
+        workingDirectory: String?,
+        envKeys: Array<String>,
+        envValues: Array<String>,
+        timeoutMs: Int,
+        maxQueuedBytes: Int,
+        shell: Boolean,
+    ): Long
+
+    @JvmStatic
+    external fun nativeExecutionLastError(): String
+
+    @JvmStatic
+    external fun nativeExecutionPoll(handle: Long): Array<String>?
+
+    @JvmStatic
+    external fun nativeExecutionWrite(handle: Long, data: String): Int
+
+    @JvmStatic
+    external fun nativeExecutionCloseStdin(handle: Long)
+
+    @JvmStatic
+    external fun nativeExecutionCancel(handle: Long)
+
+    @JvmStatic
+    external fun nativeExecutionWait(handle: Long, timeoutMs: Int): Boolean
+
+    @JvmStatic
+    external fun nativeExecutionIsRunning(handle: Long): Boolean
+
+    @JvmStatic
+    external fun nativeExecutionExitCode(handle: Long): Int
+
+    @JvmStatic
+    external fun nativeExecutionDestroy(handle: Long)
 }

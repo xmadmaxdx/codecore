@@ -43,6 +43,12 @@ cc_lsp_client* lspFrom(jlong handle) {
   return reinterpret_cast<cc_lsp_client*>(static_cast<intptr_t>(handle));
 }
 
+cc_execution* executionFrom(jlong handle) {
+  return reinterpret_cast<cc_execution*>(static_cast<intptr_t>(handle));
+}
+
+thread_local std::string lastExecutionError;
+
 struct JniListener {
   JavaVM* vm = nullptr;
   jobject target = nullptr;
@@ -1089,6 +1095,184 @@ Java_dev_codecore_nativebridge_NativeCodeCore_nativeSetChangeListener(JNIEnv* en
 
   cc_document_set_change_listener(document, replacement ? jniChangeThunk : nullptr, replacement);
   releaseListener(env, previous);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionSupported(JNIEnv*, jclass) {
+  return cc_execution_supported() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jlong JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionStart(
+    JNIEnv* env, jclass, jstring command, jobjectArray args, jstring workingDirectory,
+    jobjectArray envKeys, jobjectArray envValues, jint timeoutMs, jint maxQueuedBytes,
+    jboolean shell) {
+  lastExecutionError.clear();
+  if (!command) {
+    lastExecutionError = "command is empty";
+    return 0;
+  }
+
+  const auto readArray = [env](jobjectArray array, std::vector<std::string>& output) {
+    if (!array) {
+      return;
+    }
+    const jsize count = env->GetArrayLength(array);
+    output.reserve(static_cast<size_t>(count));
+    for (jsize index = 0; index < count; ++index) {
+      auto element = static_cast<jstring>(env->GetObjectArrayElement(array, index));
+      if (!element) {
+        output.emplace_back();
+        continue;
+      }
+      output.push_back(javaStringToUtf8(env, element));
+      env->DeleteLocalRef(element);
+    }
+  };
+
+  std::vector<std::string> arguments;
+  std::vector<std::string> keys;
+  std::vector<std::string> values;
+  readArray(args, arguments);
+  readArray(envKeys, keys);
+  readArray(envValues, values);
+  if (keys.size() != values.size()) {
+    lastExecutionError = "environment keys and values must have the same length";
+    return 0;
+  }
+
+  std::vector<const char*> argumentPointers;
+  argumentPointers.reserve(arguments.size());
+  for (const std::string& argument : arguments) {
+    argumentPointers.push_back(argument.c_str());
+  }
+  std::vector<const char*> keyPointers;
+  keyPointers.reserve(keys.size());
+  for (const std::string& key : keys) {
+    keyPointers.push_back(key.c_str());
+  }
+  std::vector<const char*> valuePointers;
+  valuePointers.reserve(values.size());
+  for (const std::string& value : values) {
+    valuePointers.push_back(value.c_str());
+  }
+
+  const std::string commandValue = javaStringToUtf8(env, command);
+  std::string workingDirectoryValue;
+  if (workingDirectory) {
+    workingDirectoryValue = javaStringToUtf8(env, workingDirectory);
+  }
+
+  cc_execution_options options{};
+  options.struct_size = sizeof(options);
+  options.command = commandValue.c_str();
+  options.args = argumentPointers.empty() ? nullptr : argumentPointers.data();
+  options.arg_count = argumentPointers.size();
+  options.working_directory =
+      workingDirectoryValue.empty() ? nullptr : workingDirectoryValue.c_str();
+  options.env_keys = keyPointers.empty() ? nullptr : keyPointers.data();
+  options.env_values = valuePointers.empty() ? nullptr : valuePointers.data();
+  options.env_count = keyPointers.size();
+  options.timeout_ms = timeoutMs > 0 ? static_cast<uint32_t>(timeoutMs) : 0;
+  options.max_queued_bytes = maxQueuedBytes > 0 ? static_cast<uint32_t>(maxQueuedBytes) : 0;
+  options.shell = shell ? 1 : 0;
+
+  char* error = nullptr;
+  cc_execution* execution = cc_execution_start(&options, &error);
+  if (!execution) {
+    lastExecutionError = error ? error : "execution start failed";
+    if (error) {
+      cc_string_free(error);
+    }
+    return 0;
+  }
+  return static_cast<jlong>(reinterpret_cast<intptr_t>(execution));
+}
+
+JNIEXPORT jstring JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionLastError(JNIEnv* env, jclass) {
+  return toJavaString(env, lastExecutionError);
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionPoll(JNIEnv* env, jclass,
+                                                                  jlong handle) {
+  cc_execution* execution = executionFrom(handle);
+  if (!execution) {
+    return nullptr;
+  }
+  cc_execution_event event{};
+  if (!cc_execution_poll(execution, &event)) {
+    return nullptr;
+  }
+
+  std::vector<std::string> fields;
+  fields.reserve(7);
+  fields.push_back(std::to_string(event.kind));
+  fields.push_back(std::to_string(event.stream));
+  fields.push_back(std::to_string(event.sequence));
+  if (event.data) {
+    fields.emplace_back(event.data, event.length);
+    cc_string_free(event.data);
+  } else {
+    fields.emplace_back();
+  }
+  fields.push_back(std::to_string(event.exit_code));
+  fields.push_back(event.cancelled ? "1" : "0");
+  fields.push_back(event.timed_out ? "1" : "0");
+  return stringArray(env, fields);
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionWrite(JNIEnv* env, jclass,
+                                                                   jlong handle,
+                                                                   jstring data) {
+  cc_execution* execution = executionFrom(handle);
+  if (!execution || !data) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  const std::string value = javaStringToUtf8(env, data);
+  return static_cast<jint>(cc_execution_write(execution, value.data(), value.size()));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionCloseStdin(JNIEnv*, jclass,
+                                                                        jlong handle) {
+  cc_execution_close_stdin(executionFrom(handle));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionCancel(JNIEnv*, jclass,
+                                                                    jlong handle) {
+  cc_execution_cancel(executionFrom(handle));
+}
+
+JNIEXPORT jboolean JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionWait(JNIEnv*, jclass, jlong handle,
+                                                                  jint timeoutMs) {
+  if (!executionFrom(handle)) {
+    return JNI_FALSE;
+  }
+  const uint32_t timeout = timeoutMs > 0 ? static_cast<uint32_t>(timeoutMs) : 0;
+  return cc_execution_wait(executionFrom(handle), timeout) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionIsRunning(JNIEnv*, jclass,
+                                                                       jlong handle) {
+  return cc_execution_is_running(executionFrom(handle)) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionExitCode(JNIEnv*, jclass,
+                                                                      jlong handle) {
+  return static_cast<jint>(cc_execution_exit_code(executionFrom(handle)));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeExecutionDestroy(JNIEnv*, jclass,
+                                                                     jlong handle) {
+  cc_execution_destroy(executionFrom(handle));
 }
 
 }  // extern "C"

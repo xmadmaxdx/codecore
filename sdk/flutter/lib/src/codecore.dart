@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
+import 'execution.dart';
 import 'lsp.dart';
 import 'models.dart';
 import 'native_bindings.dart';
@@ -135,6 +136,127 @@ class CodeCore {
       return _bindings.syntaxLanguageSupported(pointer) != 0;
     } finally {
       _bindings.freePointer(pointer);
+    }
+  }
+
+  /// Starts a child process. CodeCore ships no runtime; [command] is the
+  /// executable to run. Output is polled through [CodeCoreExecution.poll].
+  CodeCoreExecution startExecution({
+    required String command,
+    List<String> arguments = const [],
+    String? workingDirectory,
+    Map<String, String> environment = const {},
+    Duration? timeout,
+    bool shell = false,
+    int maxQueuedBytes = 0,
+  }) {
+    _ensureAlive();
+    if (command.isEmpty) {
+      throw ArgumentError.value(command, 'command', 'must not be empty');
+    }
+    if (shell && arguments.isNotEmpty) {
+      throw ArgumentError('arguments must be empty in shell mode');
+    }
+
+    final commandPointer = _bindings.allocateUtf8(command);
+    final argumentPointers = <Pointer<Uint8>>[];
+    final argumentArray = _allocateStringArray(arguments, argumentPointers);
+    final workingDirectoryPointer =
+        (workingDirectory == null || workingDirectory.isEmpty)
+            ? nullptr
+            : _bindings.allocateUtf8(workingDirectory);
+
+    final environmentEntries = environment.entries.toList(growable: false);
+    final environmentKeyPointers = <Pointer<Uint8>>[];
+    final environmentValuePointers = <Pointer<Uint8>>[];
+    final environmentKeys = _allocateStringArray(
+      environmentEntries.map((entry) => entry.key).toList(growable: false),
+      environmentKeyPointers,
+    );
+    final environmentValues = _allocateStringArray(
+      environmentEntries.map((entry) => entry.value).toList(growable: false),
+      environmentValuePointers,
+    );
+
+    final optionsPointer = _bindings
+        .allocate(sizeOf<CcExecutionOptions>())
+        .cast<CcExecutionOptions>();
+    final errorPointer =
+        _bindings.allocate(sizeOf<Pointer<Uint8>>()).cast<Pointer<Uint8>>();
+    errorPointer.value = nullptr;
+
+    try {
+      final options = optionsPointer.ref;
+      options.structSize = sizeOf<CcExecutionOptions>();
+      options.command = commandPointer;
+      options.args = argumentArray;
+      options.argCount = arguments.length;
+      options.workingDirectory = workingDirectoryPointer;
+      options.envKeys = environmentKeys;
+      options.envValues = environmentValues;
+      options.envCount = environmentEntries.length;
+      final timeoutMilliseconds = timeout?.inMilliseconds ?? 0;
+      options.timeoutMs = timeoutMilliseconds < 0
+          ? 0
+          : (timeoutMilliseconds > 0xFFFFFFFF
+              ? 0xFFFFFFFF
+              : timeoutMilliseconds);
+      options.maxQueuedBytes = maxQueuedBytes < 0 ? 0 : maxQueuedBytes;
+      options.shell = shell ? 1 : 0;
+
+      final handle = _bindings.executionStart(optionsPointer, errorPointer);
+      if (handle == nullptr) {
+        final message = _bindings.readCString(errorPointer.value);
+        if (errorPointer.value != nullptr) {
+          _bindings.stringFree(errorPointer.value);
+          errorPointer.value = nullptr;
+        }
+        throw CodeCoreException(
+          7,
+          message.isEmpty ? 'execution start failed' : message,
+        );
+      }
+      return CodeCoreExecution.internal(_bindings, handle);
+    } finally {
+      _freeStringArray(argumentArray, argumentPointers);
+      _freeStringArray(environmentKeys, environmentKeyPointers);
+      _freeStringArray(environmentValues, environmentValuePointers);
+      if (workingDirectoryPointer != nullptr) {
+        _bindings.freePointer(workingDirectoryPointer);
+      }
+      _bindings.freePointer(commandPointer);
+      _bindings.freePointer(optionsPointer);
+      _bindings.freePointer(errorPointer);
+    }
+  }
+
+  Pointer<Pointer<Uint8>> _allocateStringArray(
+    List<String> values,
+    List<Pointer<Uint8>> storage,
+  ) {
+    if (values.isEmpty) {
+      return nullptr;
+    }
+    final array = _bindings
+        .allocate(sizeOf<Pointer<Uint8>>() * values.length)
+        .cast<Pointer<Uint8>>();
+    for (var index = 0; index < values.length; index += 1) {
+      final value = _bindings.allocateUtf8(values[index]);
+      storage.add(value);
+      array[index] = value;
+    }
+    return array;
+  }
+
+  void _freeStringArray(
+    Pointer<Pointer<Uint8>> array,
+    List<Pointer<Uint8>> storage,
+  ) {
+    for (final pointer in storage) {
+      _bindings.freePointer(pointer);
+    }
+    if (array != nullptr) {
+      _bindings.freePointer(array);
     }
   }
 

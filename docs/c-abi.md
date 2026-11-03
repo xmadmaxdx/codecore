@@ -2,8 +2,8 @@
 
 Header: `native/include/codecore/codecore.h`
 
-The ABI is versioned with `cc_abi_version()` (currently `5`) and
-`cc_version_string()` (`0.4.0`). ABI version and library version are separate:
+The ABI is versioned with `cc_abi_version()` (currently `6`) and
+`cc_version_string()` (`0.5.0`). ABI version and library version are separate:
 the ABI changes only when the binary contract changes; the library version also
 moves for behavior additions.
 
@@ -283,6 +283,66 @@ cc_lsp_destroy(lsp);
 - Sync is full-text (`TextDocumentSyncKind.Full`).
 - Frames larger than 16 MB or malformed JSON are rejected and reported through
   the last-error string.
+
+## Local process execution
+
+CodeCore does not bundle a runtime. The host supplies an executable and
+arguments; CodeCore owns the child, the pipes and the reader threads.
+
+```c
+const char* args[] = {"-c", "print('hello')"};
+cc_execution_options options = {0};
+options.struct_size = sizeof(options);
+options.command = "python3";
+options.args = args;
+options.arg_count = 2;
+options.timeout_ms = 10000;
+
+char* error = NULL;
+cc_execution* run = cc_execution_start(&options, &error);
+if (!run) {
+  fprintf(stderr, "%s\n", error);
+  cc_string_free(error);
+  return;
+}
+
+cc_execution_event event;
+while (cc_execution_poll(run, &event)) {
+  if (event.kind == CC_EXECUTION_OUTPUT) {
+    fwrite(event.data, 1, event.length, event.stream == CC_EXECUTION_STDOUT ? stdout : stderr);
+    cc_string_free(event.data);
+  } else {
+    printf("exit=%d cancelled=%u timeout=%u\n", event.exit_code, event.cancelled,
+           event.timed_out);
+  }
+}
+
+cc_execution_destroy(run);
+```
+
+- `cc_execution_start` returns `NULL` on failure and allocates `*out_error` with
+  `cc_alloc`; release it with `cc_string_free`.
+- Output `data` is allocated with `cc_alloc` and released with `cc_string_free`.
+  The exit event is delivered only after all queued output.
+- `cc_execution_poll` is non-blocking. `cc_execution_wait` is optional;
+  `timeout_ms == 0` is a state check, not an infinite wait.
+- `cc_execution_write` returns `CC_STATUS_NOT_RUNNING` after exit and
+  `CC_STATUS_IO_ERROR` when the pipe fails. `cc_execution_close_stdin` sends EOF.
+- `cc_execution_destroy` cancels a running process and joins the internal
+  threads. Call it from one thread; do not call it from a callback (there are
+  no callbacks in this API).
+- Exit codes are the process status. A POSIX signal death reports
+  `128 + signal`. Windows uses the process exit code.
+- `shell` runs `command` verbatim through `cmd.exe /d /s /c` or `/bin/sh -c`;
+  arguments must be empty. Shell mode is opt-in.
+- Backpressure: reader threads stop draining the OS pipe once
+  `max_queued_bytes` output is waiting for the host (default 1 MiB). Keep
+  polling; do not assume output is lossless if the session is destroyed early.
+- The Windows backend uses a job object with kill-on-close, so cancellation
+  reaches the child tree. The POSIX backend uses a process group.
+- Android: the POSIX path is compiled, but app-data executables are blocked by
+  platform policy. Package runtimes as native libraries or use a bundled
+  interpreter; CodeCore does not supply one.
 
 ## Structural syntax (Tree-sitter)
 

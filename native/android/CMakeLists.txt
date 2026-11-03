@@ -17,6 +17,7 @@ add_library(codecore_jni SHARED
   "${CODECORE_ROOT}/core/document/line_index.cpp"
   "${CODECORE_ROOT}/core/document/document.cpp"
   "${CODECORE_ROOT}/core/syntax/syntax.cpp"
+  "${CODECORE_ROOT}/core/exec/execution.cpp"
   "${CODECORE_ROOT}/core/analysis/analysis.cpp"
   "${CODECORE_ROOT}/core/analysis/background.cpp"
   "${CODECORE_ROOT}/core/viewport/viewport.cpp"

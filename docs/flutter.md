@@ -1,6 +1,6 @@
 # Dart / Flutter SDK
 
-Package: `sdk/flutter`, name `codecore`, version `0.4.0`.
+Package: `sdk/flutter`, name `codecore`, version `0.5.0`.
 
 
 The package is a Dart FFI SDK plus a Flutter Android plugin. It contains no
@@ -111,6 +111,41 @@ if (core.supportsStructuralSyntax('python')) {
 - Repeated `doc.syntaxTree()` calls on an unchanged version reuse the native
   tree; edits reparse incrementally from the previous tree.
 - Highlights are structural, not semantic. There is no name or type resolution.
+
+## Execution
+
+`startExecution` runs a child process. CodeCore ships no runtime; pass the
+command the host wants to run. Poll output and dispose the session when done.
+
+```dart
+final run = core.startExecution(
+  command: 'python3',
+  arguments: ['-c', 'print("hello")'],
+  timeout: const Duration(seconds: 10),
+);
+
+while (true) {
+  final event = run.poll();
+  if (event == null) {
+    sleep(const Duration(milliseconds: 5));
+    continue;
+  }
+  if (event.kind == ExecutionEventKind.output) {
+    stdout.write(event.data);
+  } else {
+    print('exit ${event.exitCode} cancelled=${event.cancelled}');
+    break;
+  }
+}
+run.dispose();
+```
+
+`write` sends stdin, `closeStdin` sends EOF, `cancel` terminates the process
+tree, `wait` blocks with a timeout, and `exitCode` is -1 until exit. Output is
+bounded (1 MiB by default); the host must keep polling to avoid backpressure.
+The exit event is delivered after all queued output. On Android, app-data
+executables are blocked by platform policy; package runtimes as native
+libraries.
 
 ## Permissions and edit origin
 
@@ -239,8 +274,8 @@ CODECORE_LIBRARY_PATH=../../build/native/libcodecore.dll \
   dart run tool/smoke_test.dart
 ```
 
-Last run: analyze clean; smoke test **105 checks / 0 failures**. The smoke test
-asserts ABI 5 and covers structural syntax, LSP, documents, editing and agent
+Last run: analyze clean; smoke test **111 checks / 0 failures**. The smoke test
+asserts ABI 6 and covers structural syntax, LSP, documents, editing and agent
 features.
 
 ## Limitations
@@ -252,6 +287,7 @@ features.
   not sandboxed.
 - Structural syntax is Python and JavaScript only; other languages use the
   lexical tokenizer.
-- No semantic intelligence or execution.
+- No semantic intelligence or runtime management. Execution runs only what the
+  host supplies; no interpreter is bundled.
 - Android plugin publishing needs the native sources vendored or an AAR; local
   path integration in this repository works from the shared source tree.

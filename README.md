@@ -5,12 +5,17 @@ ABI, plus Dart FFI and Kotlin/JNI integration layers. It is designed to power
 editors inside Flutter and Android applications without shipping a compiler or
 requiring a cloud account.
 
-**Current release: CodeCore Core v0.4.0.** The C ABI is version `5`; the Dart
-package is `codecore 0.4.0`. These version numbers move independently of the
+**Current release: CodeCore Core v0.5.0.** The C ABI is version `6`; the Dart
+package is `codecore 0.5.0`. These version numbers move independently of the
 editor-widget milestone, which does not exist yet.
 
-## What changed in 0.4
+## What changed in 0.5
 
+- Local process execution: a cross-platform session API with piped stdin,
+  stdout and stderr, polled output events, timeouts, cancellation, working
+  directory and environment overrides, exposed through the C ABI, Dart SDK
+  and Kotlin SDK. No runtime or compiler is bundled; the host supplies the
+  executable.
 - Tree-sitter integration: a vendored C runtime with Python and JavaScript
   grammars, incremental reparse from the previous tree, structural highlights
   and real syntax errors, exposed through the C ABI, Dart SDK and Kotlin SDK.
@@ -50,6 +55,7 @@ Implemented and tested:
 | LSP client (framing, lifecycle, sync, completion, hover, definition, references, symbols, rename, formatting, code actions, diagnostics) | Implemented across the C ABI, Dart and Kotlin; tested |
 | 23 language definitions and lexical tokens | Implemented, tested |
 | Tree-sitter structural syntax (Python and JavaScript grammars) | Implemented in the core, C ABI, Dart and Kotlin SDKs; 223 native and 105 Dart smoke checks, 0 failures |
+| Local process execution (pipes, streaming, timeout, cancel, cwd, env) | Implemented in the core, C ABI, Dart and Kotlin SDKs; 79 native, 111 Dart and 126 JNI checks, 0 failures |
 | Keyword / symbol / builtin completion | Implemented, tested |
 | Bracket and unterminated-literal diagnostics | Implemented, tested |
 | Brace and block-comment folding | Implemented, tested |
@@ -73,14 +79,15 @@ Not implemented yet — see [docs/status.md](docs/status.md):
 - Semantic intelligence independent of LSP.
 - AI model providers, agent orchestration, chat or multi-file workflows.
 - Flutter editor widgets and Kotlin/Compose views (the UI is a separate layer).
-- Package manager, downloads, signing and verification.
-- Execution API and local runtimes (Phase B).
+- Runtime registry, bundled runtimes, PTY/terminal and package manager.
+- Downloads, signing and verification.
 
 ## Repository layout
 
 ```text
 core/                 C++ engine (buffer, document, analysis, diff, snapshots)
 core/syntax/          Tree-sitter wrapper, incremental reparse and highlights
+core/exec/            Child processes, pipes, streaming, timeout and cancel
 core/viewport/        Visible-line geometry and overscan math
 core/lsp/             JSON-RPC codec, LSP framing and client session
 native/include/       Public C ABI header
@@ -150,7 +157,7 @@ version or update `ndkVersion` in `sdk/kotlin/build.gradle.kts`.
 | CTest | 4/4 passed |
 | Dart static analysis | No issues |
 | Dart FFI smoke test | **99 checks, 0 failures** |
-| JNI smoke test (Java) | **112 checks, 0 failures** |
+| JNI smoke test (Java) | **126 checks, 0 failures** |
 | Kotlin module compile | `gradlew.bat :assembleDebug` — **BUILD SUCCESSFUL**, debug AAR produced (NDK 28.2.13676358) |
 | Android native build | `libcodecore_jni.so` built for arm64-v8a, armeabi-v7a, x86 and x86_64 with `tree_sitter_python` linked in |
 | Benchmark | Manual harness exists; no speed target is claimed |

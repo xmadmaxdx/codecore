@@ -45,8 +45,8 @@ public final class JniSmokeTest {
         return false;
     }
 
-    public static void main(String[] args) {
-        check("0.4.0".equals(NativeCodeCore.nativeVersion()), "native version");
+    public static void main(String[] args) throws Exception {
+        check("0.5.0".equals(NativeCodeCore.nativeVersion()), "native version");
 
         long document = NativeCodeCore.nativeCreate("python", 4, true);
         check(document != 0L, "document creation");
@@ -286,6 +286,41 @@ public final class JniSmokeTest {
         check(didOpenFrame != null && didOpenFrame.contains("textDocument/didOpen"),
                 "lsp did open frame");
         NativeCodeCore.nativeLspDestroy(lsp);
+
+        check(NativeCodeCore.nativeExecutionSupported(), "execution supported");
+        String[] noArgs = new String[0];
+        long execution = NativeCodeCore.nativeExecutionStart(
+                "echo codecore-jni", noArgs, null, noArgs, noArgs, 5000, 0, true);
+        check(execution != 0L, "execution start");
+        if (execution != 0L) {
+            StringBuilder executionOutput = new StringBuilder();
+            int executionExit = -1;
+            boolean executionDone = false;
+            for (int attempt = 0; attempt < 5000 && !executionDone; attempt += 1) {
+                String[] fields = NativeCodeCore.nativeExecutionPoll(execution);
+                while (fields != null) {
+                    if ("0".equals(fields[0])) {
+                        executionOutput.append(fields[3]);
+                    } else {
+                        executionExit = Integer.parseInt(fields[4]);
+                        executionDone = true;
+                        break;
+                    }
+                    fields = NativeCodeCore.nativeExecutionPoll(execution);
+                }
+                if (!executionDone) {
+                    Thread.sleep(1);
+                }
+            }
+            check(executionDone, "execution exits");
+            check(executionExit == 0, "execution exit code");
+            check(executionOutput.toString().contains("codecore-jni"), "execution output");
+            NativeCodeCore.nativeExecutionDestroy(execution);
+        }
+        long missingExecution = NativeCodeCore.nativeExecutionStart(
+                "codecore-no-such-command-xyz", noArgs, null, noArgs, noArgs, 0, 0, false);
+        check(missingExecution == 0L, "unknown command rejected");
+        check(!NativeCodeCore.nativeExecutionLastError().isEmpty(), "execution error message");
 
         NativeCodeCore.nativeDestroy(document);
         check(true, "destroy does not crash");

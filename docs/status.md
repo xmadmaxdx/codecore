@@ -1,13 +1,13 @@
-# Status — CodeCore Core v0.4.0
+# Status — CodeCore Core v0.5.0
 
 Release identifiers:
 
 | Identifier | Value |
 |---|---|
-| Core library version | `0.4.0` (`cc_version_string`) |
-| C ABI version | `5` (`cc_abi_version`) |
-| Dart package | `codecore 0.4.0` |
-| Kotlin module | `dev.codecore` 0.4.0 sources |
+| Core library version | `0.5.0` (`cc_version_string`) |
+| C ABI version | `6` (`cc_abi_version`) |
+| Dart package | `codecore 0.5.0` |
+| Kotlin module | `dev.codecore` 0.5.0 sources |
 | Gradle wrapper | 9.3.1 |
 | Pinned Android NDK | 28.2.13676358 |
 
@@ -33,6 +33,7 @@ covered by the verification below; it does not imply production hardening.
 | Languages | 23 language definitions with comments, strings, keywords, types, builtins |
 | Syntax | Lexical tokens for comments, strings, numbers, keywords, tags, attributes, CSS properties |
 | Structural syntax | Tree-sitter runtime plus Python and JavaScript grammars, incremental reparse, structural highlights, syntax errors, node lookup. Core, C ABI, Dart and Kotlin SDKs. |
+| Local execution | One process per session with piped stdin/stdout/stderr, polled output events, per-stream ordering, timeouts, cancellation, exit codes, cwd and environment overrides. Core, C ABI, Dart and Kotlin SDKs; no runtime is bundled. |
 | Completion | Keywords, types, builtins, document symbols; prefix filter, ranking, 100-item cap |
 | Diagnostics | Unmatched/unclosed brackets, unterminated strings and block comments |
 | Folding | Brace ranges, multi-line comment ranges |
@@ -43,9 +44,9 @@ covered by the verification below; it does not imply production hardening.
 | Edit origins | User, AI, host, formatter, external tool; stored in history and emitted in events |
 | Change events | Versioned set/insert/erase/replace/undo/redo/proposal/snapshot/ghost events with origin |
 | C ABI | Opaque handles, explicit ownership, allocation/free functions, language metadata |
-| Dart SDK | FFI loader, documents, editing, tokens, structural syntax, completion, diagnostics, folding, find, proposals, ghost text, snapshots, change listener, LSP client |
+| Dart SDK | FFI loader, documents, editing, tokens, structural syntax, execution, completion, diagnostics, folding, find, proposals, ghost text, snapshots, change listener, LSP client |
 | JNI bridge | Compiled; Java harness covers the Kotlin-visible surface |
-| Kotlin SDK | Selection, cursor, multi-cursor, language switching, change listeners, proposals, ghost text, snapshots, structural syntax and an LSP client |
+| Kotlin SDK | Selection, cursor, multi-cursor, language switching, change listeners, proposals, ghost text, snapshots, structural syntax, execution and an LSP client |
 
 ## Verification performed
 
@@ -59,11 +60,12 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 | LSP tests | `./build/native/codecore_lsp_tests.exe` | **59 checks, 0 failures** |
 | Viewport/background tests | `./build/native/codecore_performance_tests.exe` | **36 checks, 0 failures** |
 | Tree-sitter syntax tests | `./build/native/codecore_syntax_tests.exe` | **223 checks, 0 failures** |
-| CTest | `ctest --test-dir build/native --output-on-failure` | 4/4 passed |
+| Execution tests | `./build/native/codecore_execution_tests.exe` | **79 checks, 0 failures** |
+| CTest | `ctest --test-dir build/native --output-on-failure` | 5/5 passed |
 | Dart analyze | `dart analyze` in `sdk/flutter` | No issues |
-| Dart FFI smoke | `dart run tool/smoke_test.dart` | **105 checks, 0 failures** |
+| Dart FFI smoke | `dart run tool/smoke_test.dart` | **111 checks, 0 failures** |
 | JNI build | `cmake --build build/native -DCODECORE_BUILD_JNI=ON` | Success |
-| JNI smoke | `java -Djava.library.path=build/native -cp build/jni-test JniSmokeTest` | Harness updated for both grammars; this machine's Application Control policy blocked loading the freshly built DLL, so the new checks are unrun (native and Dart cover the same grammar path) |
+| JNI smoke | `java -Djava.library.path=build/native-jni -cp build/jni-test JniSmokeTest` | **126 checks, 0 failures** |
 | Kotlin Gradle build | `gradlew.bat :assembleDebug` | **BUILD SUCCESSFUL**; Kotlin and Android/JNI sources compiled, debug AAR produced |
 | Android native build | `libcodecore_jni.so` for 4 ABIs | `tree_sitter_python`, `tree_sitter_javascript` and `ts_parser_parse_string` linked in |
 | LSP SDK surface | `dart analyze`, `gradlew.bat :assembleDebug` | Clean / BUILD SUCCESSFUL |
@@ -89,7 +91,10 @@ Do not treat any of these as available:
 - Flutter editor widgets and Kotlin/Compose views.
 - Editor rendering, gutter, minimap, tabs, themes (UI layer).
 - Package manager, downloads, signature verification, atomic install/rollback.
-- Execution API, runtime manager, terminal, debugging, build system.
+- Runtime registry, bundled runtimes, PTY/terminal, debugging and build system.
+- Execution on Android at runtime: the POSIX path is compiled into the NDK
+  build, but app-data executables are blocked by platform policy and were not
+  run on a device here.
 - Project/workspace management, git integration, symbol indexing.
 - Indentation-based folding (brace and block-comment folding only).
 - Incremental tokenization; the background worker moves the full scan off the

@@ -204,4 +204,25 @@ data class FoldingRange(
     val kind: FoldingKind,
 )
 
+enum class ExecutionEventKind {
+    OUTPUT,
+    EXIT,
+}
+
+enum class ExecutionStream {
+    STDOUT,
+    STDERR,
+}
+
+/** One output chunk or the final exit event from a CodeCore execution session. */
+data class ExecutionEvent(
+    val kind: ExecutionEventKind,
+    val stream: ExecutionStream,
+    val sequence: Long,
+    val data: String,
+    val exitCode: Int,
+    val cancelled: Boolean,
+    val timedOut: Boolean,
+)
+
 class CodeCoreException(val code: Int, message: String) : RuntimeException(message)

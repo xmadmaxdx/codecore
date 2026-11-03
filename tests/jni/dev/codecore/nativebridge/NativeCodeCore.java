@@ -188,4 +188,34 @@ public final class NativeCodeCore {
     public static native void nativeLspShutdown(long handle);
 
     public static native void nativeLspExit(long handle);
+
+    public static native boolean nativeExecutionSupported();
+
+    public static native long nativeExecutionStart(
+            String command,
+            String[] args,
+            String workingDirectory,
+            String[] envKeys,
+            String[] envValues,
+            int timeoutMs,
+            int maxQueuedBytes,
+            boolean shell);
+
+    public static native String nativeExecutionLastError();
+
+    public static native String[] nativeExecutionPoll(long handle);
+
+    public static native int nativeExecutionWrite(long handle, String data);
+
+    public static native void nativeExecutionCloseStdin(long handle);
+
+    public static native void nativeExecutionCancel(long handle);
+
+    public static native boolean nativeExecutionWait(long handle, int timeoutMs);
+
+    public static native boolean nativeExecutionIsRunning(long handle);
+
+    public static native int nativeExecutionExitCode(long handle);
+
+    public static native void nativeExecutionDestroy(long handle);
 }

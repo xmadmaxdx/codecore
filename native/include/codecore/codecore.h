@@ -39,9 +39,9 @@
  * ---------------------
  * The lexical layer remains the fallback for every language: comments, strings,
  * numbers, keywords, types and brackets. Structural parsing (Tree-sitter) is
- * available only for languages with a bundled grammar; currently Python. It
- * provides a concrete syntax tree, structural highlights and syntax errors. It
- * is not semantic analysis. See docs/status.md.
+ * available only for languages with a bundled grammar; currently Python and
+ * JavaScript. It provides a concrete syntax tree, structural highlights and
+ * syntax errors. It is not semantic analysis. See docs/status.md.
  *
  * Analysis caching
  * ---------------
@@ -68,9 +68,9 @@ extern "C" {
 #endif
 
 #define CODECORE_VERSION_MAJOR 0
-#define CODECORE_VERSION_MINOR 4
+#define CODECORE_VERSION_MINOR 5
 #define CODECORE_VERSION_PATCH 0
-#define CODECORE_ABI_VERSION 5u
+#define CODECORE_ABI_VERSION 6u
 
 #if defined(_WIN32) && defined(CODECORE_BUILD_SHARED)
 #define CC_API __declspec(dllexport)
@@ -86,6 +86,7 @@ typedef struct cc_snapshot cc_snapshot;
 typedef struct cc_analyzer cc_analyzer;
 typedef struct cc_syntax_tree cc_syntax_tree;
 typedef struct cc_lsp_client cc_lsp_client;
+typedef struct cc_execution cc_execution;
 
 typedef enum cc_status {
   CC_STATUS_OK = 0,
@@ -95,7 +96,9 @@ typedef enum cc_status {
   CC_STATUS_UNKNOWN_LANGUAGE = 4,
   CC_STATUS_OUT_OF_MEMORY = 5,
   CC_STATUS_UNSUPPORTED = 6,
-  CC_STATUS_INTERNAL_ERROR = 7
+  CC_STATUS_INTERNAL_ERROR = 7,
+  CC_STATUS_NOT_RUNNING = 8,
+  CC_STATUS_IO_ERROR = 9
 } cc_status;
 
 typedef enum cc_change_kind {
@@ -267,6 +270,49 @@ typedef struct cc_change_event {
   uint32_t origin;
 } cc_change_event;
 
+typedef enum cc_execution_event_kind {
+  CC_EXECUTION_OUTPUT = 0,
+  CC_EXECUTION_EXIT = 1
+} cc_execution_event_kind;
+
+typedef enum cc_execution_stream {
+  CC_EXECUTION_STDOUT = 0,
+  CC_EXECUTION_STDERR = 1
+} cc_execution_stream;
+
+typedef struct cc_execution_options {
+  uint32_t struct_size;
+  /* Executable name or path; resolved through PATH when possible. */
+  const char* command;
+  /* argv[1..]; no program name. Must be NULL when arg_count is zero. */
+  const char* const* args;
+  size_t arg_count;
+  /* NULL or empty inherits the current working directory. */
+  const char* working_directory;
+  /* Additions/overrides merged into the inherited environment. */
+  const char* const* env_keys;
+  const char* const* env_values;
+  size_t env_count;
+  /* 0 disables the timeout. */
+  uint32_t timeout_ms;
+  /* Soft output backlog bound; 0 uses the default (1 MiB). */
+  uint32_t max_queued_bytes;
+  /* Runs command verbatim through cmd.exe / sh -c; args must be empty. */
+  uint8_t shell;
+} cc_execution_options;
+
+typedef struct cc_execution_event {
+  uint32_t kind; /* cc_execution_event_kind */
+  uint32_t stream; /* cc_execution_stream, output events only */
+  uint64_t sequence;
+  /* UTF-8 bytes, allocated with cc_alloc. Free with cc_string_free. */
+  char* data;
+  size_t length;
+  int32_t exit_code; /* exit events only; -1 for a signal-free unknown */
+  uint8_t cancelled;
+  uint8_t timed_out;
+} cc_execution_event;
+
 typedef struct cc_diff_line {
   uint32_t kind;
   uint32_t old_line;
@@ -424,6 +470,38 @@ CC_API void cc_analyzer_wait(cc_analyzer* analyzer);
 CC_API void cc_analyzer_cancel(cc_analyzer* analyzer);
 CC_API size_t cc_analyzer_dropped(const cc_analyzer* analyzer);
 CC_API size_t cc_analyzer_completed(const cc_analyzer* analyzer);
+
+/*
+ * Local process execution.
+ *
+ * CodeCore ships no runtime; the host supplies the executable and arguments.
+ * Each handle owns one child process, its pipes, and internal reader/waiter
+ * threads. Calls are safe from one host thread. Output is polled, not pushed
+ * through callbacks. stdout/stderr byte order is preserved per stream; the
+ * cross-stream interleaving is enqueue order.
+ *
+ * start() returns NULL on failure and allocates *out_error (free with
+ * cc_string_free). Output event data is allocated with cc_alloc and must be
+ * freed with cc_string_free. The final EXIT event is delivered only after all
+ * queued output.
+ *
+ * On Android, executing files from app data is blocked by platform policy;
+ * runtimes must be packaged as native libraries. CodeCore does not bundle one.
+ */
+CC_API uint8_t cc_execution_supported(void);
+CC_API cc_execution* cc_execution_start(const cc_execution_options* options,
+                                         char** out_error);
+CC_API uint8_t cc_execution_poll(cc_execution* execution,
+                                  cc_execution_event* out_event);
+CC_API cc_status cc_execution_write(cc_execution* execution, const char* data,
+                                     size_t length);
+CC_API void cc_execution_close_stdin(cc_execution* execution);
+CC_API void cc_execution_cancel(cc_execution* execution);
+/* timeout_ms == 0 is a non-blocking state check. */
+CC_API uint8_t cc_execution_wait(cc_execution* execution, uint32_t timeout_ms);
+CC_API uint8_t cc_execution_is_running(const cc_execution* execution);
+CC_API int32_t cc_execution_exit_code(const cc_execution* execution);
+CC_API void cc_execution_destroy(cc_execution* execution);
 
 /*
  * Structural syntax (Tree-sitter).

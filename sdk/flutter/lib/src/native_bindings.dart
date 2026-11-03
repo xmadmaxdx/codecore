@@ -217,6 +217,61 @@ final class CcChangeEvent extends Struct {
   external int origin;
 }
 
+final class CcExecutionOptions extends Struct {
+  @Uint32()
+  external int structSize;
+
+  external Pointer<Uint8> command;
+
+  external Pointer<Pointer<Uint8>> args;
+
+  @IntPtr()
+  external int argCount;
+
+  external Pointer<Uint8> workingDirectory;
+
+  external Pointer<Pointer<Uint8>> envKeys;
+
+  external Pointer<Pointer<Uint8>> envValues;
+
+  @IntPtr()
+  external int envCount;
+
+  @Uint32()
+  external int timeoutMs;
+
+  @Uint32()
+  external int maxQueuedBytes;
+
+  @Uint8()
+  external int shell;
+}
+
+final class CcExecutionEvent extends Struct {
+  @Uint32()
+  external int kind;
+
+  @Uint32()
+  external int stream;
+
+  @Uint64()
+  external int sequence;
+
+  external Pointer<Uint8> data;
+
+  @IntPtr()
+  external int length;
+
+  @Int32()
+  external int exitCode;
+
+  @Uint8()
+  external int cancelled;
+
+  @Uint8()
+  external int timedOut;
+}
+
 class CodeCoreException implements Exception {
   const CodeCoreException(this.code, this.message);
 
@@ -516,6 +571,35 @@ typedef _SetChangeListenerNative = Void Function(Pointer<Void>,
 typedef _SetChangeListenerDart = void Function(Pointer<Void>,
     Pointer<NativeFunction<ChangeCallbackNative>>, Pointer<Void>);
 
+typedef _ExecutionSupportedNative = Uint8 Function();
+typedef _ExecutionSupportedDart = int Function();
+
+typedef _ExecutionStartNative = Pointer<Void> Function(
+    Pointer<CcExecutionOptions>, Pointer<Pointer<Uint8>>);
+typedef _ExecutionStartDart = Pointer<Void> Function(
+    Pointer<CcExecutionOptions>, Pointer<Pointer<Uint8>>);
+
+typedef _ExecutionPollNative = Uint8 Function(
+    Pointer<Void>, Pointer<CcExecutionEvent>);
+typedef _ExecutionPollDart = int Function(
+    Pointer<Void>, Pointer<CcExecutionEvent>);
+
+typedef _ExecutionWriteNative = Int32 Function(
+    Pointer<Void>, Pointer<Uint8>, IntPtr);
+typedef _ExecutionWriteDart = int Function(Pointer<Void>, Pointer<Uint8>, int);
+
+typedef _ExecutionVoidNative = Void Function(Pointer<Void>);
+typedef _ExecutionVoidDart = void Function(Pointer<Void>);
+
+typedef _ExecutionWaitNative = Uint8 Function(Pointer<Void>, Uint32);
+typedef _ExecutionWaitDart = int Function(Pointer<Void>, int);
+
+typedef _ExecutionBoolNative = Uint8 Function(Pointer<Void>);
+typedef _ExecutionBoolDart = int Function(Pointer<Void>);
+
+typedef _ExecutionExitCodeNative = Int32 Function(Pointer<Void>);
+typedef _ExecutionExitCodeDart = int Function(Pointer<Void>);
+
 /// Direct, unmanaged access to the native library.
 ///
 /// The Dart SDK wraps this class; applications should not normally use it.
@@ -755,6 +839,34 @@ class CodeCoreBindings {
     syntaxTreeErrorAt =
         library.lookupFunction<_SyntaxErrorAtNative, _SyntaxErrorAtDart>(
             'cc_syntax_tree_error_at');
+    executionSupported = library.lookupFunction<_ExecutionSupportedNative,
+        _ExecutionSupportedDart>('cc_execution_supported');
+    executionStart =
+        library.lookupFunction<_ExecutionStartNative, _ExecutionStartDart>(
+            'cc_execution_start');
+    executionPoll =
+        library.lookupFunction<_ExecutionPollNative, _ExecutionPollDart>(
+            'cc_execution_poll');
+    executionWrite =
+        library.lookupFunction<_ExecutionWriteNative, _ExecutionWriteDart>(
+            'cc_execution_write');
+    executionCloseStdin =
+        library.lookupFunction<_ExecutionVoidNative, _ExecutionVoidDart>(
+            'cc_execution_close_stdin');
+    executionCancel =
+        library.lookupFunction<_ExecutionVoidNative, _ExecutionVoidDart>(
+            'cc_execution_cancel');
+    executionWait =
+        library.lookupFunction<_ExecutionWaitNative, _ExecutionWaitDart>(
+            'cc_execution_wait');
+    executionIsRunning =
+        library.lookupFunction<_ExecutionBoolNative, _ExecutionBoolDart>(
+            'cc_execution_is_running');
+    executionExitCode = library.lookupFunction<_ExecutionExitCodeNative,
+        _ExecutionExitCodeDart>('cc_execution_exit_code');
+    executionDestroy =
+        library.lookupFunction<_ExecutionVoidNative, _ExecutionVoidDart>(
+            'cc_execution_destroy');
   }
 
   final DynamicLibrary library;
@@ -848,6 +960,16 @@ class CodeCoreBindings {
   late final _SyntaxHighlightAtDart syntaxTreeHighlightAt;
   late final _SyntaxTreeCountDart syntaxTreeErrorCount;
   late final _SyntaxErrorAtDart syntaxTreeErrorAt;
+  late final _ExecutionSupportedDart executionSupported;
+  late final _ExecutionStartDart executionStart;
+  late final _ExecutionPollDart executionPoll;
+  late final _ExecutionWriteDart executionWrite;
+  late final _ExecutionVoidDart executionCloseStdin;
+  late final _ExecutionVoidDart executionCancel;
+  late final _ExecutionWaitDart executionWait;
+  late final _ExecutionBoolDart executionIsRunning;
+  late final _ExecutionExitCodeDart executionExitCode;
+  late final _ExecutionVoidDart executionDestroy;
 
   Pointer<Uint8> allocate(int bytes) {
     final pointer = alloc(bytes);
@@ -882,6 +1004,13 @@ class CodeCoreBindings {
       index += 1;
     }
     return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  String readUtf8(Pointer<Uint8> pointer, int length) {
+    if (pointer == nullptr || length <= 0) {
+      return '';
+    }
+    return utf8.decode(pointer.asTypedList(length), allowMalformed: true);
   }
 
   String get nativeVersion => readCString(versionString());

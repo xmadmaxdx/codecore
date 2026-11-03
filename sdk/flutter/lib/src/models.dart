@@ -139,6 +139,49 @@ enum CursorMove {
   documentEnd,
 }
 
+enum ExecutionEventKind {
+  output(0),
+  exit(1);
+
+  const ExecutionEventKind(this.nativeValue);
+  final int nativeValue;
+
+  static ExecutionEventKind fromNative(int value) =>
+      value == 0 ? ExecutionEventKind.output : ExecutionEventKind.exit;
+}
+
+enum ExecutionStream {
+  stdout(0),
+  stderr(1);
+
+  const ExecutionStream(this.nativeValue);
+  final int nativeValue;
+
+  static ExecutionStream fromNative(int value) =>
+      value == 0 ? ExecutionStream.stdout : ExecutionStream.stderr;
+}
+
+/// One output chunk or the final exit event from a CodeCore execution session.
+class ExecutionEvent {
+  const ExecutionEvent({
+    required this.kind,
+    required this.stream,
+    required this.sequence,
+    required this.data,
+    required this.exitCode,
+    required this.cancelled,
+    required this.timedOut,
+  });
+
+  final ExecutionEventKind kind;
+  final ExecutionStream stream;
+  final int sequence;
+  final String data;
+  final int exitCode;
+  final bool cancelled;
+  final bool timedOut;
+}
+
 class CodeCoreLanguage {
   const CodeCoreLanguage({
     required this.id,

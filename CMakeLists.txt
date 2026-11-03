@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(CodeCore
-  VERSION 0.4.0
+  VERSION 0.5.0
   DESCRIPTION "Embeddable code editor engine"
   LANGUAGES C CXX)
 
@@ -20,6 +20,7 @@ set(CODECORE_CORE_SOURCES
   core/document/line_index.cpp
   core/document/document.cpp
   core/syntax/syntax.cpp
+  core/exec/execution.cpp
   core/analysis/analysis.cpp
   core/analysis/background.cpp
   core/viewport/viewport.cpp
@@ -152,6 +153,30 @@ if(CODECORE_BUILD_TESTS)
     target_compile_options(codecore_lsp_tests PRIVATE -Wall -Wextra)
   endif()
   add_test(NAME codecore_lsp COMMAND codecore_lsp_tests)
+
+  add_executable(codecore_exec_helper
+    tests/core/exec_helper.cpp
+  )
+  if(MSVC)
+    target_compile_options(codecore_exec_helper PRIVATE /W4)
+  else()
+    target_compile_options(codecore_exec_helper PRIVATE -Wall -Wextra)
+  endif()
+
+  add_executable(codecore_execution_tests
+    tests/core/test_execution.cpp
+  )
+  target_link_libraries(codecore_execution_tests PRIVATE codecore)
+  target_include_directories(codecore_execution_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
+  add_dependencies(codecore_execution_tests codecore_exec_helper)
+  if(MSVC)
+    target_compile_options(codecore_execution_tests PRIVATE /W4)
+  else()
+    target_compile_options(codecore_execution_tests PRIVATE -Wall -Wextra)
+  endif()
+  add_test(NAME codecore_execution COMMAND codecore_execution_tests)
 
   add_executable(codecore_performance_tests
     tests/core/test_performance.cpp

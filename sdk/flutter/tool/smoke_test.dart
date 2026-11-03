@@ -27,12 +27,30 @@ bool containsToken(List<TokenSpan> tokens, TokenKind kind) =>
 bool containsLabel(List<CompletionItem> items, String label) =>
     items.any((item) => item.label == label);
 
+ExecutionEvent? drainExecution(
+    CodeCoreExecution execution, StringBuffer output) {
+  final deadline = DateTime.now().add(const Duration(seconds: 5));
+  while (DateTime.now().isBefore(deadline)) {
+    final event = execution.poll();
+    if (event == null) {
+      sleep(const Duration(milliseconds: 2));
+      continue;
+    }
+    if (event.kind == ExecutionEventKind.output) {
+      output.write(event.data);
+    } else {
+      return event;
+    }
+  }
+  return null;
+}
+
 void main() {
   CodeCore? core;
   try {
     core = CodeCore.open();
-    check(core.version == '0.4.0', 'native version is 0.4.0');
-    check(core.abiVersion == 5, 'C ABI version is 5');
+    check(core.version == '0.5.0', 'native version is 0.5.0');
+    check(core.abiVersion == 6, 'C ABI version is 6');
     check(core.languageCount == 23, 'language registry has 23 languages');
     check(
       core.languages.any((language) => language.idString == 'python'),
@@ -333,6 +351,32 @@ void main() {
       'LSP didOpen frame',
     );
     lsp.dispose();
+
+    final execution = core.startExecution(
+      command: 'echo codecore-exec',
+      shell: true,
+    );
+    final executionOutput = StringBuffer();
+    final executionExit = drainExecution(execution, executionOutput);
+    check(executionExit != null, 'execution exit event');
+    check(executionExit?.exitCode == 0, 'execution exit code');
+    check(executionOutput.toString().contains('codecore-exec'),
+        'execution stdout');
+    check(!execution.isRunning, 'execution is finished');
+    execution.dispose();
+
+    final exitExecution = core.startExecution(command: 'exit 3', shell: true);
+    final exitEvent = drainExecution(exitExecution, StringBuffer());
+    check(exitEvent?.exitCode == 3, 'execution nonzero exit');
+    exitExecution.dispose();
+
+    var executionStartFailed = false;
+    try {
+      core.startExecution(command: 'codecore-command-does-not-exist-xyz');
+    } on CodeCoreException {
+      executionStartFailed = true;
+    }
+    check(executionStartFailed, 'execution start failure throws');
 
     check(core.languages.every((language) => language.supportsSyntax),
         'all languages expose syntax');
