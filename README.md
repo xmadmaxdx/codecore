@@ -5,12 +5,15 @@ ABI, plus Dart FFI and Kotlin/JNI integration layers. It is designed to power
 editors inside Flutter and Android applications without shipping a compiler or
 requiring a cloud account.
 
-**Current release: CodeCore Core v0.3.0.** The C ABI is version `4`; the Dart
-package is `codecore 0.3.0`. These version numbers move independently of the
+**Current release: CodeCore Core v0.4.0.** The C ABI is version `5`; the Dart
+package is `codecore 0.4.0`. These version numbers move independently of the
 editor-widget milestone, which does not exist yet.
 
-## What changed in 0.3
+## What changed in 0.4
 
+- Tree-sitter integration: a vendored C runtime and Python grammar, incremental
+  reparse from the previous tree, structural highlights and real syntax errors,
+  exposed through a new C ABI surface.
 - Incremental line indexing, versioned analysis caches and immutable snapshots.
 - Agent-facing editing: edit origins, proposed content with line diffs, atomic
   accept/reject, host-provided ghost text with partial acceptance, and snapshot
@@ -46,6 +49,7 @@ Implemented and tested:
 | Viewport visible-range geometry with overscan | Implemented, tested |
 | LSP client (framing, lifecycle, sync, completion, hover, definition, references, symbols, rename, formatting, code actions, diagnostics) | Implemented across the C ABI, Dart and Kotlin; tested |
 | 23 language definitions and lexical tokens | Implemented, tested |
+| Tree-sitter structural syntax (Python grammar) | Implemented in the core and C ABI; 137 checks, 0 failures |
 | Keyword / symbol / builtin completion | Implemented, tested |
 | Bracket and unterminated-literal diagnostics | Implemented, tested |
 | Brace and block-comment folding | Implemented, tested |
@@ -62,7 +66,8 @@ Not implemented yet — see [docs/status.md](docs/status.md):
 
 - Incremental tokenization; analysis is cached per version and offloaded to a
   worker, but an edited document is still re-lexed from the start.
-- Tree-sitter grammars and incremental syntax trees.
+- Tree-sitter grammars beyond Python; Python is the only bundled parser.
+- Structural syntax in the Dart and Kotlin SDKs; the C ABI exposes it first.
 - Language-server process/socket managers and bundled servers (hosts own the
   transport; CodeCore ships the protocol client only).
 - Semantic intelligence independent of LSP.
@@ -75,12 +80,14 @@ Not implemented yet — see [docs/status.md](docs/status.md):
 
 ```text
 core/                 C++ engine (buffer, document, analysis, diff, snapshots)
+core/syntax/          Tree-sitter wrapper, incremental reparse and highlights
 core/viewport/        Visible-line geometry and overscan math
 core/lsp/             JSON-RPC codec, LSP framing and client session
 native/include/       Public C ABI header
 native/src/           C ABI implementation
 native/jni/           JNI bridge
 native/android/       Shared Android NDK build definition
+third_party/          Vendored Tree-sitter runtime and Python grammar
 sdk/flutter/          Dart FFI package and Flutter Android plugin
 sdk/kotlin/           Kotlin SDK, Gradle wrapper and NDK build
 tests/core/           Native test suite and randomized line-index checks
@@ -91,7 +98,8 @@ docs/                 Architecture, API notes and status
 
 ## Build the native core
 
-Requirements: CMake 3.20+, a C++17 compiler.
+Requirements: CMake 3.20+, a C17 and C++17 compiler. Tree-sitter and the Python
+grammar are vendored under `third_party/`, so no network access is needed.
 
 ```bash
 cmake -S . -B build/native
@@ -133,18 +141,18 @@ version or update `ndkVersion` in `sdk/kotlin/build.gradle.kts`.
 
 ## Verification
 
-Last verified on the development machine:
-
 | Check | Result |
 |---|---|
-| Native engine tests | **3,037 checks, 0 failures** |
+| Native engine tests | **3,038 checks, 0 failures** |
 | LSP tests | **59 checks, 0 failures** |
 | Viewport/background tests | **36 checks, 0 failures** |
-| CTest | 3/3 passed |
+| Tree-sitter syntax tests | **137 checks, 0 failures** |
+| CTest | 4/4 passed |
 | Dart static analysis | No issues |
 | Dart FFI smoke test | **82 checks, 0 failures** |
 | JNI smoke test (Java) | **98 checks, 0 failures** |
 | Kotlin module compile | `gradlew.bat :assembleDebug` — **BUILD SUCCESSFUL**, debug AAR produced (NDK 28.2.13676358) |
+| Android native build | `libcodecore_jni.so` built for arm64-v8a, armeabi-v7a, x86 and x86_64 with `tree_sitter_python` linked in |
 | Benchmark | Manual harness exists; no speed target is claimed |
 
 ## Use from Dart
@@ -238,7 +246,10 @@ Rules that matter:
 ## Architecture in one paragraph
 
 The engine owns a piece-table buffer, an incrementally maintained line index and
-one immutable analysis cache per text version. Edits produce inverse records for
+one immutable analysis cache per text version. A separate Tree-sitter layer
+parses supported languages incrementally and supplies structural highlights and
+syntax errors; the lexical analyzer remains the fallback for all other
+languages. Edits produce inverse records for
 undo; repeated adjacent typing coalesces into one history entry, and every record
 carries an edit origin. Language data is an immutable registry of 23 lexer
 definitions loaded once per engine. Snapshots copy text and language, so analysis

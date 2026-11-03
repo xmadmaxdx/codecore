@@ -198,6 +198,9 @@ Status Document::setLanguage(std::shared_ptr<const Language> language) {
   language_ = std::move(language);
   options_.languageId = language_->id;
   analysis_.reset();
+  syntaxTree_.reset();
+  syntaxVersion_ = 0;
+  syntaxLanguageId_ = -1;
   return succeed();
 }
 
@@ -1097,6 +1100,27 @@ Status Document::matchBracket(size_t offset, size_t* outMatch) const {
   }
   *outMatch = match;
   return succeed();
+}
+
+std::shared_ptr<SyntaxTree> Document::syntaxTree() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (!language_) {
+    return nullptr;
+  }
+  if (syntaxTree_ && syntaxVersion_ == version_ &&
+      syntaxLanguageId_ == language_->id) {
+    return syntaxTree_;
+  }
+
+  const std::string& text = currentText();
+  if (syntaxTree_ && syntaxLanguageId_ == language_->id) {
+    syntaxTree_ = SyntaxTree::reparse(*syntaxTree_, text);
+  } else {
+    syntaxTree_ = SyntaxTree::parse(text, language_->idString);
+  }
+  syntaxVersion_ = version_;
+  syntaxLanguageId_ = language_->id;
+  return syntaxTree_;
 }
 
 std::vector<Token> Document::tokenize(size_t start, size_t end) const {

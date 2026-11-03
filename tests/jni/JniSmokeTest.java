@@ -46,7 +46,7 @@ public final class JniSmokeTest {
     }
 
     public static void main(String[] args) {
-        check("0.3.0".equals(NativeCodeCore.nativeVersion()), "native version");
+        check("0.4.0".equals(NativeCodeCore.nativeVersion()), "native version");
 
         long document = NativeCodeCore.nativeCreate("python", 4, true);
         check(document != 0L, "document creation");

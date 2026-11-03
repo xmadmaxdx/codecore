@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(CodeCore
-  VERSION 0.3.0
+  VERSION 0.4.0
   DESCRIPTION "Embeddable code editor engine"
-  LANGUAGES CXX)
+  LANGUAGES C CXX)
 
 option(CODECORE_BUILD_TESTS "Build the native test suite" ON)
 option(CODECORE_BUILD_JNI "Build the optional JNI bridge" OFF)
@@ -19,6 +19,7 @@ set(CODECORE_CORE_SOURCES
   core/language/lexer.cpp
   core/document/line_index.cpp
   core/document/document.cpp
+  core/syntax/syntax.cpp
   core/analysis/analysis.cpp
   core/analysis/background.cpp
   core/viewport/viewport.cpp
@@ -34,6 +35,30 @@ set(CODECORE_CORE_SOURCES
 
 find_package(Threads REQUIRED)
 
+# Vendored Tree-sitter runtime and the bundled Python grammar. This target is
+# built as C with warnings suppressed: parser.c is generated code.
+add_library(codecore_tree_sitter STATIC
+  third_party/tree-sitter/lib/src/lib.c
+  third_party/tree-sitter-python/src/parser.c
+  third_party/tree-sitter-python/src/scanner.c
+)
+target_include_directories(codecore_tree_sitter
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter/lib/include
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter/lib/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-python/src
+)
+set_target_properties(codecore_tree_sitter PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(MSVC)
+  target_compile_options(codecore_tree_sitter PRIVATE /W0)
+else()
+  target_compile_options(codecore_tree_sitter PRIVATE -w)
+endif()
+
+target_include_directories(codecore_tree_sitter PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-python/src)
+
 add_library(codecore_objects OBJECT ${CODECORE_CORE_SOURCES})
 set_target_properties(codecore_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(codecore_objects
@@ -42,6 +67,13 @@ target_include_directories(codecore_objects
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+target_link_libraries(codecore_objects PRIVATE codecore_tree_sitter)
+# The objects feed both the static and shared library. Marking the C ABI as
+# dllexport here is what makes libcodecore.dll usable through Dart FFI on
+# Windows; without it the DLL exports no cc_* symbols.
+if(WIN32)
+  target_compile_definitions(codecore_objects PRIVATE CODECORE_BUILD_SHARED)
+endif()
 
 if(MSVC)
   target_compile_options(codecore_objects PRIVATE /W4 /permissive-)
@@ -58,11 +90,11 @@ endif()
 # Static library: primary artifact for native embedders and tests.
 add_library(codecore STATIC $<TARGET_OBJECTS:codecore_objects>)
 target_include_directories(codecore INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
-target_link_libraries(codecore PUBLIC Threads::Threads)
+target_link_libraries(codecore PUBLIC Threads::Threads codecore_tree_sitter)
 
 # Shared library: FFI / JNI host artifact.
 add_library(codecore_shared SHARED $<TARGET_OBJECTS:codecore_objects>)
-target_link_libraries(codecore_shared PRIVATE Threads::Threads)
+target_link_libraries(codecore_shared PRIVATE Threads::Threads codecore_tree_sitter)
 target_compile_definitions(codecore_shared PRIVATE CODECORE_BUILD_SHARED)
 target_include_directories(codecore_shared INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
 set_target_properties(codecore_shared PROPERTIES
@@ -78,6 +110,7 @@ if(CODECORE_BUILD_JNI)
   find_package(JNI REQUIRED)
   add_library(codecore_jni SHARED native/jni/codecore_jni.cpp $<TARGET_OBJECTS:codecore_objects>)
   target_include_directories(codecore_jni PRIVATE ${JNI_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
+  target_link_libraries(codecore_jni PRIVATE codecore_tree_sitter)
   # JNI entry points are provided by the host VM at runtime; linking jvm.lib is
   # unnecessary and breaks cross-compilation (including Android NDK builds).
   set_target_properties(codecore_jni PROPERTIES OUTPUT_NAME codecore_jni)
@@ -128,6 +161,20 @@ if(CODECORE_BUILD_TESTS)
     target_compile_options(codecore_performance_tests PRIVATE -Wall -Wextra)
   endif()
   add_test(NAME codecore_performance COMMAND codecore_performance_tests)
+
+  add_executable(codecore_syntax_tests
+    tests/core/test_syntax.cpp
+  )
+  target_link_libraries(codecore_syntax_tests PRIVATE codecore)
+  target_include_directories(codecore_syntax_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
+  if(MSVC)
+    target_compile_options(codecore_syntax_tests PRIVATE /W4)
+  else()
+    target_compile_options(codecore_syntax_tests PRIVATE -Wall -Wextra)
+  endif()
+  add_test(NAME codecore_syntax COMMAND codecore_syntax_tests)
 
   # Manual benchmark; intentionally not registered with CTest because timings
   # are machine-dependent.

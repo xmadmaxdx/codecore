@@ -4,6 +4,10 @@ Module: `sdk/kotlin`
 JNI bridge: `native/jni/codecore_jni.cpp`  
 Native build: `native/android/CMakeLists.txt`
 
+Structural syntax (Tree-sitter highlights and syntax errors) is currently
+available through the C ABI only. The Kotlin SDK still exposes lexical tokens;
+the JNI syntax bindings are the next SDK step.
+
 ## Design
 
 ```text

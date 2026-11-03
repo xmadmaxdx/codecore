@@ -37,9 +37,11 @@
  *
  * Language capabilities
  * ---------------------
- * v0.3 ships a lexical (Level 1) language layer: comments, strings, numbers,
- * keywords, types and brackets. It is *not* Tree-sitter and makes no semantic
- * claims. See docs/status.md.
+ * The lexical layer remains the fallback for every language: comments, strings,
+ * numbers, keywords, types and brackets. Structural parsing (Tree-sitter) is
+ * available only for languages with a bundled grammar; currently Python. It
+ * provides a concrete syntax tree, structural highlights and syntax errors. It
+ * is not semantic analysis. See docs/status.md.
  *
  * Analysis caching
  * ---------------
@@ -66,9 +68,9 @@ extern "C" {
 #endif
 
 #define CODECORE_VERSION_MAJOR 0
-#define CODECORE_VERSION_MINOR 3
+#define CODECORE_VERSION_MINOR 4
 #define CODECORE_VERSION_PATCH 0
-#define CODECORE_ABI_VERSION 4u
+#define CODECORE_ABI_VERSION 5u
 
 #if defined(_WIN32) && defined(CODECORE_BUILD_SHARED)
 #define CC_API __declspec(dllexport)
@@ -82,6 +84,7 @@ typedef struct cc_engine cc_engine;
 typedef struct cc_document cc_document;
 typedef struct cc_snapshot cc_snapshot;
 typedef struct cc_analyzer cc_analyzer;
+typedef struct cc_syntax_tree cc_syntax_tree;
 typedef struct cc_lsp_client cc_lsp_client;
 
 typedef enum cc_status {
@@ -421,6 +424,51 @@ CC_API void cc_analyzer_wait(cc_analyzer* analyzer);
 CC_API void cc_analyzer_cancel(cc_analyzer* analyzer);
 CC_API size_t cc_analyzer_dropped(const cc_analyzer* analyzer);
 CC_API size_t cc_analyzer_completed(const cc_analyzer* analyzer);
+
+/*
+ * Structural syntax (Tree-sitter).
+ *
+ * cc_document_syntax_tree parses the current version incrementally from the
+ * previous tree and returns an owned tree handle. The handle is immutable;
+ * highlights and errors are snapshots of that version. Strings inside the
+ * returned structs are owned by the tree and stay valid until
+ * cc_syntax_tree_destroy.
+ *
+ * Only languages with a bundled grammar are supported; check
+ * cc_syntax_language_supported before relying on the result. The lexical
+ * tokenizer remains available for every other language.
+ */
+typedef struct cc_syntax_highlight {
+  uint32_t start;
+  uint32_t end;
+  uint32_t kind; /* cc_token_kind */
+  const char* capture; /* e.g. "keyword", "function", "string" */
+} cc_syntax_highlight;
+
+typedef struct cc_syntax_error {
+  uint32_t start;
+  uint32_t end;
+  uint32_t start_row;
+  uint32_t start_column; /* bytes, Tree-sitter convention */
+  uint32_t end_row;
+  uint32_t end_column;
+  uint8_t missing;
+  const char* node_type;
+} cc_syntax_error;
+
+CC_API uint8_t cc_syntax_language_supported(const char* language_id);
+CC_API cc_syntax_tree* cc_document_syntax_tree(cc_document* document);
+CC_API void cc_syntax_tree_destroy(cc_syntax_tree* tree);
+CC_API const char* cc_syntax_tree_language(const cc_syntax_tree* tree);
+CC_API const char* cc_syntax_tree_root_type(const cc_syntax_tree* tree);
+CC_API size_t cc_syntax_tree_node_count(const cc_syntax_tree* tree);
+CC_API uint8_t cc_syntax_tree_has_errors(const cc_syntax_tree* tree);
+CC_API size_t cc_syntax_tree_highlight_count(const cc_syntax_tree* tree);
+CC_API uint8_t cc_syntax_tree_highlight_at(const cc_syntax_tree* tree, size_t index,
+                                           cc_syntax_highlight* out_highlight);
+CC_API size_t cc_syntax_tree_error_count(const cc_syntax_tree* tree);
+CC_API uint8_t cc_syntax_tree_error_at(const cc_syntax_tree* tree, size_t index,
+                                       cc_syntax_error* out_error);
 
 /* Visible-line geometry for viewport renderers (end_line is exclusive). */
 typedef struct cc_viewport_range {

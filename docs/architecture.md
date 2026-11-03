@@ -25,6 +25,7 @@ Host application (Flutter / Kotlin / C / C++)
                  ├── proposed text + line diff
                  ├── ghost-text state
                  ├── Analysis cache (per version)
+                 ├── Syntax tree (Tree-sitter, per version)
                  └── Snapshot (immutable text + analysis)
 ```
 
@@ -148,9 +149,10 @@ The lexer is a table-driven, single-pass tokenizer for comments, strings,
 numbers, keywords, types, builtins, constants, annotations, function calls,
 HTML/XML tags and CSS properties.
 
-It is explicitly **not** Tree-sitter. It does not build a syntax tree or
-understand scopes or types. Capability flags advertise syntax, completion,
-diagnostics and folding only.
+The lexer is explicitly **not** Tree-sitter. It does not build a syntax tree
+or understand scopes or types. Capability flags advertise syntax, completion,
+diagnostics and folding only. Structural parsing is a separate layer and is
+currently available for Python only.
 
 ## Language services
 
@@ -166,6 +168,27 @@ diagnostics and folding only.
 
 Analysis is per-version, not incremental. Snapshots move it off the document
 lock, but do not make tokenization incremental.
+
+## Structural syntax (Tree-sitter)
+
+`core/syntax` wraps a vendored Tree-sitter runtime and the Python grammar.
+
+- `SyntaxTree::parse` builds a tree from a full text buffer.
+- `SyntaxTree::reparse` takes the previous immutable tree, derives one byte
+  edit from the old and new text (common prefix/suffix), copies the tree,
+  applies `ts_tree_edit` and reparses. Tree-sitter reuses unchanged subtrees.
+- `Document` caches the tree by version and language, so repeated
+  `syntaxTree()` calls on one version do not parse again.
+- Highlights come from a bundled, predicate-free Python query. Overlapping
+  captures are deduplicated by specificity (keyword, comment, string,
+  number, function, type, property, variable, operator, punctuation).
+- Errors are `ERROR` and `MISSING` nodes, capped at 500 per query.
+- Trees are immutable and safe to read across threads; query cursors are
+  created per call.
+
+The parser does not replace the lexer. Every other language continues to use
+`core/language`. There is no grammar loader, no download path and no public
+Tree-sitter query API.
 
 ## Background analysis
 
@@ -228,8 +251,8 @@ not a replacement for the CodeCore document model or completion engine.
 - Returned arrays and strings are allocated through `cc_alloc` and freed with the
   matching `cc_*_free`.
 - C++ types and exceptions never cross the boundary.
-- The ABI is versioned separately from the library. Current: ABI `4`, library
-  `0.3.0`.
+- The ABI is versioned separately from the library. Current: ABI `5`, library
+  `0.4.0`.
 
 ## Threading
 
@@ -241,6 +264,9 @@ not a replacement for the CodeCore document model or completion engine.
 - `BackgroundAnalyzer` uses one worker thread, a latest-wins queue and
   generation-based stale-result rejection. Its completion callback is polling;
   it never touches UI state.
+- A document's cached `SyntaxTree` is protected by the document mutex. Once
+  returned, the tree is immutable; highlight/error queries create their own
+  Tree-sitter query cursors and do not lock the document.
 - Dart callbacks are isolate-local; Kotlin callbacks run on the mutating thread.
 
 ## Platform SDKs
@@ -265,6 +291,8 @@ not a replacement for the CodeCore document model or completion engine.
   without publishing stale results.
 - **Visible-range geometry** keeps rendering work proportional to the viewport,
   not the document.
+- **Tree-sitter for supported languages** gives a real syntax tree and
+  incremental reparse without making every language pay for a grammar.
 - **C ABI** keeps Dart and Kotlin independent of C++ ABI details.
 - **Lexical Level 1** delivers useful highlighting for 23 languages without
   grammar binaries; Tree-sitter remains the planned upgrade.

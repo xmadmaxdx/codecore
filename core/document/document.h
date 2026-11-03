@@ -14,6 +14,7 @@
 #include "core/document/types.h"
 #include "core/language/language.h"
 #include "core/snapshot/snapshot.h"
+#include "core/syntax/syntax.h"
 #include "core/text_buffer/text_buffer.h"
 
 namespace codecore {
@@ -103,6 +104,13 @@ class Document {
   Status multiErase(bool backward);
   Status matchBracket(size_t offset, size_t* outMatch) const;
 
+  /*
+   * Structural syntax tree for the current version, parsed incrementally from
+   * the previous tree. Returns nullptr when the language has no bundled
+   * grammar. The returned tree is immutable and safe to read on a worker.
+   */
+  std::shared_ptr<SyntaxTree> syntaxTree() const;
+
   std::vector<Token> tokenize(size_t start, size_t end) const;
   std::vector<CompletionItem> complete(size_t offset) const;
   std::vector<Diagnostic> diagnose() const;
@@ -154,6 +162,10 @@ class Document {
   mutable std::shared_ptr<Analysis> analysis_;
   mutable uint64_t analysisVersion_ = 0;
   mutable int32_t analysisLanguageId_ = -1;
+
+  mutable std::shared_ptr<SyntaxTree> syntaxTree_;
+  mutable uint64_t syntaxVersion_ = 0;
+  mutable int32_t syntaxLanguageId_ = -1;
 
   uint64_t version_ = 0;
   EditOrigin nextOrigin_ = EditOrigin::Host;

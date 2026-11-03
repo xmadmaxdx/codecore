@@ -5,7 +5,7 @@
 
 cmake_minimum_required(VERSION 3.22.1)
 
-project(codecore_android LANGUAGES CXX)
+project(codecore_android LANGUAGES C CXX)
 
 set(CODECORE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 find_package(Threads REQUIRED)
@@ -16,6 +16,7 @@ add_library(codecore_jni SHARED
   "${CODECORE_ROOT}/core/language/lexer.cpp"
   "${CODECORE_ROOT}/core/document/line_index.cpp"
   "${CODECORE_ROOT}/core/document/document.cpp"
+  "${CODECORE_ROOT}/core/syntax/syntax.cpp"
   "${CODECORE_ROOT}/core/analysis/analysis.cpp"
   "${CODECORE_ROOT}/core/analysis/background.cpp"
   "${CODECORE_ROOT}/core/viewport/viewport.cpp"
@@ -30,9 +31,25 @@ add_library(codecore_jni SHARED
   "${CODECORE_ROOT}/native/jni/codecore_jni.cpp"
 )
 
+target_sources(codecore_jni PRIVATE
+  "${CODECORE_ROOT}/third_party/tree-sitter/lib/src/lib.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-python/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-python/src/scanner.c"
+)
+
+set_source_files_properties(
+  "${CODECORE_ROOT}/third_party/tree-sitter/lib/src/lib.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-python/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-python/src/scanner.c"
+  PROPERTIES COMPILE_OPTIONS "-w"
+)
+
 target_include_directories(codecore_jni PRIVATE
   "${CODECORE_ROOT}"
   "${CODECORE_ROOT}/native/include"
+  "${CODECORE_ROOT}/third_party/tree-sitter/lib/include"
+  "${CODECORE_ROOT}/third_party/tree-sitter/lib/src"
+  "${CODECORE_ROOT}/third_party/tree-sitter-python/src"
 )
 
 target_compile_features(codecore_jni PRIVATE cxx_std_17)

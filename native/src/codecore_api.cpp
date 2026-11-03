@@ -34,6 +34,18 @@ struct cc_analyzer {
   codecore::BackgroundAnalyzer analyzer;
 };
 
+struct cc_syntax_tree {
+  std::shared_ptr<codecore::SyntaxTree> tree;
+  std::vector<cc_syntax_highlight> highlights;
+  std::vector<cc_syntax_error> errors;
+  std::vector<std::string> capture_storage;
+  std::vector<std::string> type_storage;
+  std::string language;
+  std::string root_type;
+  size_t node_count = 0;
+  bool has_errors = false;
+};
+
 namespace {
 
 char* duplicateString(const std::string& value) {
@@ -71,6 +83,56 @@ cc_token* allocateTokens(const std::vector<codecore::Token>& tokens) {
     output[index].start = tokens[index].start;
     output[index].end = tokens[index].end;
     output[index].kind = static_cast<uint32_t>(tokens[index].kind);
+  }
+  return output;
+}
+
+cc_syntax_tree* buildSyntaxTree(std::shared_ptr<codecore::SyntaxTree> tree) {
+  if (!tree) {
+    return nullptr;
+  }
+  auto* output = new (std::nothrow) cc_syntax_tree();
+  if (!output) {
+    return nullptr;
+  }
+  output->tree = std::move(tree);
+  output->language = output->tree->languageId();
+  output->root_type = output->tree->rootType();
+  output->node_count = output->tree->nodeCount();
+  output->has_errors = output->tree->hasErrors();
+
+  const std::vector<codecore::SyntaxHighlight> highlights = output->tree->highlights();
+  output->capture_storage.reserve(highlights.size());
+  for (const auto& highlight : highlights) {
+    output->capture_storage.push_back(highlight.capture);
+  }
+  output->highlights.reserve(highlights.size());
+  for (size_t index = 0; index < highlights.size(); ++index) {
+    cc_syntax_highlight item{};
+    item.start = static_cast<uint32_t>(highlights[index].start);
+    item.end = static_cast<uint32_t>(highlights[index].end);
+    item.kind = static_cast<uint32_t>(highlights[index].kind);
+    item.capture = output->capture_storage[index].c_str();
+    output->highlights.push_back(item);
+  }
+
+  const std::vector<codecore::SyntaxError> errors = output->tree->errors();
+  output->type_storage.reserve(errors.size());
+  for (const auto& error : errors) {
+    output->type_storage.push_back(error.nodeType);
+  }
+  output->errors.reserve(errors.size());
+  for (size_t index = 0; index < errors.size(); ++index) {
+    cc_syntax_error item{};
+    item.start = static_cast<uint32_t>(errors[index].start);
+    item.end = static_cast<uint32_t>(errors[index].end);
+    item.start_row = errors[index].startPoint.row;
+    item.start_column = errors[index].startPoint.column;
+    item.end_row = errors[index].endPoint.row;
+    item.end_column = errors[index].endPoint.column;
+    item.missing = errors[index].missing ? 1 : 0;
+    item.node_type = output->type_storage[index].c_str();
+    output->errors.push_back(item);
   }
   return output;
 }
@@ -193,7 +255,7 @@ extern "C" {
 
 uint32_t cc_abi_version(void) { return CODECORE_ABI_VERSION; }
 
-const char* cc_version_string(void) { return "0.3.0"; }
+const char* cc_version_string(void) { return "0.4.0"; }
 
 void* cc_alloc(size_t size) { return std::malloc(size == 0 ? 1 : size); }
 
@@ -1126,6 +1188,61 @@ size_t cc_analyzer_dropped(const cc_analyzer* analyzer) {
 
 size_t cc_analyzer_completed(const cc_analyzer* analyzer) {
   return analyzer ? analyzer->analyzer.completedCount() : 0;
+}
+
+uint8_t cc_syntax_language_supported(const char* language_id) {
+  return language_id && codecore::syntaxLanguageSupported(language_id) ? 1 : 0;
+}
+
+cc_syntax_tree* cc_document_syntax_tree(cc_document* document) {
+  if (!document || !document->document) {
+    return nullptr;
+  }
+  return buildSyntaxTree(document->document->syntaxTree());
+}
+
+void cc_syntax_tree_destroy(cc_syntax_tree* tree) { delete tree; }
+
+const char* cc_syntax_tree_language(const cc_syntax_tree* tree) {
+  return tree ? tree->language.c_str() : "";
+}
+
+const char* cc_syntax_tree_root_type(const cc_syntax_tree* tree) {
+  return tree ? tree->root_type.c_str() : "";
+}
+
+size_t cc_syntax_tree_node_count(const cc_syntax_tree* tree) {
+  return tree ? tree->node_count : 0;
+}
+
+uint8_t cc_syntax_tree_has_errors(const cc_syntax_tree* tree) {
+  return tree && tree->has_errors ? 1 : 0;
+}
+
+size_t cc_syntax_tree_highlight_count(const cc_syntax_tree* tree) {
+  return tree ? tree->highlights.size() : 0;
+}
+
+uint8_t cc_syntax_tree_highlight_at(const cc_syntax_tree* tree, size_t index,
+                                    cc_syntax_highlight* out_highlight) {
+  if (!tree || !out_highlight || index >= tree->highlights.size()) {
+    return 0;
+  }
+  *out_highlight = tree->highlights[index];
+  return 1;
+}
+
+size_t cc_syntax_tree_error_count(const cc_syntax_tree* tree) {
+  return tree ? tree->errors.size() : 0;
+}
+
+uint8_t cc_syntax_tree_error_at(const cc_syntax_tree* tree, size_t index,
+                                cc_syntax_error* out_error) {
+  if (!tree || !out_error || index >= tree->errors.size()) {
+    return 0;
+  }
+  *out_error = tree->errors[index];
+  return 1;
 }
 
 cc_status cc_viewport_visible_range(uint32_t line_count, uint32_t scroll_y,

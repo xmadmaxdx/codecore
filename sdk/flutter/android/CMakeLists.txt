@@ -6,7 +6,7 @@
 
 cmake_minimum_required(VERSION 3.22.1)
 
-project(codecore_flutter LANGUAGES CXX)
+project(codecore_flutter LANGUAGES C CXX)
 
 set(CODECORE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../..")
 
@@ -16,16 +16,36 @@ add_library(codecore SHARED
   "${CODECORE_ROOT}/core/language/lexer.cpp"
   "${CODECORE_ROOT}/core/document/line_index.cpp"
   "${CODECORE_ROOT}/core/document/document.cpp"
+  "${CODECORE_ROOT}/core/syntax/syntax.cpp"
   "${CODECORE_ROOT}/core/analysis/analysis.cpp"
+  "${CODECORE_ROOT}/core/analysis/background.cpp"
+  "${CODECORE_ROOT}/core/viewport/viewport.cpp"
   "${CODECORE_ROOT}/core/diff/diff.cpp"
   "${CODECORE_ROOT}/core/snapshot/snapshot.cpp"
   "${CODECORE_ROOT}/core/engine/engine.cpp"
+  "${CODECORE_ROOT}/core/lsp/json.cpp"
+  "${CODECORE_ROOT}/core/lsp/protocol.cpp"
+  "${CODECORE_ROOT}/core/lsp/client.cpp"
   "${CODECORE_ROOT}/native/src/codecore_api.cpp"
+  "${CODECORE_ROOT}/native/src/codecore_lsp_api.cpp"
+  "${CODECORE_ROOT}/third_party/tree-sitter/lib/src/lib.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-python/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-python/src/scanner.c"
+)
+
+set_source_files_properties(
+  "${CODECORE_ROOT}/third_party/tree-sitter/lib/src/lib.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-python/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-python/src/scanner.c"
+  PROPERTIES COMPILE_OPTIONS "-w"
 )
 
 target_include_directories(codecore PRIVATE
   "${CODECORE_ROOT}"
   "${CODECORE_ROOT}/native/include"
+  "${CODECORE_ROOT}/third_party/tree-sitter/lib/include"
+  "${CODECORE_ROOT}/third_party/tree-sitter/lib/src"
+  "${CODECORE_ROOT}/third_party/tree-sitter-python/src"
 )
 
 target_compile_features(codecore PRIVATE cxx_std_17)

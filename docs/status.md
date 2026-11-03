@@ -1,13 +1,13 @@
-# Status — CodeCore Core v0.3.0
+# Status — CodeCore Core v0.4.0
 
 Release identifiers:
 
 | Identifier | Value |
 |---|---|
-| Core library version | `0.3.0` (`cc_version_string`) |
-| C ABI version | `4` (`cc_abi_version`) |
-| Dart package | `codecore 0.3.0` |
-| Kotlin module | `dev.codecore` 0.3.0 sources |
+| Core library version | `0.4.0` (`cc_version_string`) |
+| C ABI version | `5` (`cc_abi_version`) |
+| Dart package | `codecore 0.4.0` |
+| Kotlin module | `dev.codecore` 0.4.0 sources |
 | Gradle wrapper | 9.3.1 |
 | Pinned Android NDK | 28.2.13676358 |
 
@@ -32,6 +32,7 @@ covered by the verification below; it does not imply production hardening.
 | Brackets | Matching bracket lookup, bracket-aware diagnostics |
 | Languages | 23 language definitions with comments, strings, keywords, types, builtins |
 | Syntax | Lexical tokens for comments, strings, numbers, keywords, tags, attributes, CSS properties |
+| Structural syntax | Tree-sitter runtime plus Python grammar, incremental reparse, structural highlights, syntax errors, node lookup. Core and C ABI only. |
 | Completion | Keywords, types, builtins, document symbols; prefix filter, ranking, 100-item cap |
 | Diagnostics | Unmatched/unclosed brackets, unterminated strings and block comments |
 | Folding | Brace ranges, multi-line comment ranges |
@@ -54,15 +55,17 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 | Check | Command | Result |
 |---|---|---|
 | Native build | `cmake --build build/native --config Release` | Success |
-| Native tests | `./build/native/codecore_tests.exe` | **3,037 checks, 0 failures** |
+| Native tests | `./build/native/codecore_tests.exe` | **3,038 checks, 0 failures** |
 | LSP tests | `./build/native/codecore_lsp_tests.exe` | **59 checks, 0 failures** |
 | Viewport/background tests | `./build/native/codecore_performance_tests.exe` | **36 checks, 0 failures** |
-| CTest | `ctest --test-dir build/native --output-on-failure` | 3/3 passed |
+| Tree-sitter syntax tests | `./build/native/codecore_syntax_tests.exe` | **137 checks, 0 failures** |
+| CTest | `ctest --test-dir build/native --output-on-failure` | 4/4 passed |
 | Dart analyze | `dart analyze` in `sdk/flutter` | No issues |
 | Dart FFI smoke | `dart run tool/smoke_test.dart` | **82 checks, 0 failures** |
 | JNI build | `cmake --build build/native -DCODECORE_BUILD_JNI=ON` | Success |
 | JNI smoke | `java -Djava.library.path=build/native -cp build/jni-test JniSmokeTest` | **98 checks, 0 failures** |
 | Kotlin Gradle build | `gradlew.bat :assembleDebug` | **BUILD SUCCESSFUL**; Kotlin and Android/JNI sources compiled, debug AAR produced |
+| Android native build | `libcodecore_jni.so` for 4 ABIs | `tree_sitter_python` and `ts_parser_parse_string` linked in |
 | LSP SDK surface | `dart analyze`, `gradlew.bat :assembleDebug` | Clean / BUILD SUCCESSFUL |
 | Flutter Android plugin | Not built on this machine | Plugin sources and CMake build are present |
 | Benchmark | `build/native/codecore_benchmark.exe` | Results recorded below; no target claimed |
@@ -79,7 +82,8 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 
 Do not treat any of these as available:
 
-- Tree-sitter parsing, grammars and syntax queries.
+- Tree-sitter grammars beyond Python; no grammar loader or grammar package yet.
+- Structural syntax in the Dart and Kotlin SDKs; only the C ABI exposes it.
 - Language-server process, pipe and socket managers; no server is bundled.
 - Semantic intelligence independent of LSP.
 - AI model providers, prompt orchestration, agent loops, chat, multi-file edits.
@@ -98,8 +102,9 @@ Do not treat any of these as available:
 
 ## Known limitations
 
-1. **Lexical, not semantic.** Highlighting and diagnostics are heuristic. A
-   string that looks like code is a string; macro-expanded types are unknown.
+1. **Lexical or syntactic, never semantic.** The fallback highlighter is
+   heuristic. Tree-sitter supplies a concrete syntax tree for Python, not types,
+   scopes or name resolution. A string that looks like code is still a string.
 2. **Analysis is per-version, not incremental.** Each edit invalidates the
    document analysis cache. `BackgroundAnalyzer` moves the full scan and
    diagnostics off the caller's thread and rejects stale results, but it does not
@@ -123,7 +128,16 @@ Do not treat any of these as available:
 10. **Regex search is host-controlled.** Patterns use C++ ECMAScript semantics,
     are capped at 10,000 ranges and are not protected against pathological
     backtracking. Validate or constrain patterns in trusted code.
-11. **LSP is transport-only.** The C ABI, Dart and Kotlin clients handle
+11. **Tree-sitter is Python-only.** The grammar is compiled in; adding another
+    language means vendoring its generated parser and highlight query. There is
+    no runtime grammar package or download path yet.
+12. **Structural syntax is C-ABI only.** The Dart and Kotlin SDKs do not expose
+    syntax trees, highlights or syntax errors yet.
+13. **Tree traversal is per call.** `nodeCount()`, highlights and errors walk or
+    query the tree each time a syntax handle is built. The tree itself is cached
+    per document version and reparsed incrementally, but the handle is not a
+    per-frame render cache.
+14. **LSP is transport-only.** The C ABI, Dart and Kotlin clients handle
     protocol framing, lifecycle, requests and diagnostics, but the host owns
     the process/socket. Document sync is full-text, positions use UTF-16
     coordinates, frames are capped at 16 MB and no language server is bundled.

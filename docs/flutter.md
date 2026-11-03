@@ -1,6 +1,10 @@
 # Dart / Flutter SDK
 
-Package: `sdk/flutter`, name `codecore`, version `0.3.0`.
+Package: `sdk/flutter`, name `codecore`, version `0.4.0`.
+
+Structural syntax (Tree-sitter highlights and syntax errors) is currently
+available through the C ABI only. The Dart API still exposes lexical tokens;
+the syntax bindings are the next SDK step.
 
 The package is a Dart FFI SDK plus a Flutter Android plugin. It contains no
 editor widgets yet; the widget/renderer layer is a separate milestone.

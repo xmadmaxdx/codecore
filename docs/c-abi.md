@@ -2,8 +2,8 @@
 
 Header: `native/include/codecore/codecore.h`
 
-The ABI is versioned with `cc_abi_version()` (currently `4`) and
-`cc_version_string()` (`0.3.0`). ABI version and library version are separate:
+The ABI is versioned with `cc_abi_version()` (currently `5`) and
+`cc_version_string()` (`0.4.0`). ABI version and library version are separate:
 the ABI changes only when the binary contract changes; the library version also
 moves for behavior additions.
 
@@ -38,6 +38,7 @@ after the engine is destroyed. Documents are not destroyed with the engine.
 | `cc_diff_line*` from proposal diff | `cc_diff_lines_free(lines, count)` |
 | `cc_language_info*` | Not freed; engine-owned |
 | `cc_snapshot*` | `cc_snapshot_destroy` |
+| `cc_syntax_tree*` | `cc_syntax_tree_destroy` |
 
 Empty result sets return `0` and set the out-pointer to `NULL`. Inputs are
 copied before a function returns.
@@ -283,6 +284,43 @@ cc_lsp_destroy(lsp);
 - Frames larger than 16 MB or malformed JSON are rejected and reported through
   the last-error string.
 
+## Structural syntax (Tree-sitter)
+
+Only languages with a bundled grammar produce a tree. Currently that is Python.
+
+```c
+cc_syntax_tree* tree = cc_document_syntax_tree(doc);
+if (tree) {
+  printf("%s errors=%u\n", cc_syntax_tree_root_type(tree),
+         cc_syntax_tree_has_errors(tree));
+
+  for (size_t i = 0; i < cc_syntax_tree_highlight_count(tree); ++i) {
+    cc_syntax_highlight highlight = {0};
+    cc_syntax_tree_highlight_at(tree, i, &highlight);
+    /* highlight.start/end are UTF-8 bytes; kind is a cc_token_kind. */
+  }
+
+  for (size_t i = 0; i < cc_syntax_tree_error_count(tree); ++i) {
+    cc_syntax_error error = {0};
+    cc_syntax_tree_error_at(tree, i, &error);
+  }
+  cc_syntax_tree_destroy(tree);
+}
+```
+
+- `cc_document_syntax_tree` parses the current version incrementally from the
+  document's previous tree and returns an owned handle. Repeated calls on an
+  unchanged version reuse the cached tree; building the handle still walks or
+  queries the tree for counts and ranges.
+- Returns `NULL` when the document's language has no bundled grammar. Check
+  `cc_syntax_language_supported("python")` when the grammar is required.
+- Highlight and error strings point into the tree handle and stay valid until
+  `cc_syntax_tree_destroy`.
+- `start`/`end` are UTF-8 byte offsets. Row/column values in `cc_syntax_error`
+  follow Tree-sitter: rows are zero-based and columns are bytes within the row,
+  not Unicode code points.
+- Tree-sitter is syntax, not semantics: it does not resolve names or types.
+
 ## Threading
 
 - The engine's language metadata is immutable and can be read concurrently.
@@ -300,5 +338,7 @@ cc_lsp_destroy(lsp);
 - Search is capped at 10,000 matches.
 - Diagnostics are capped at 200 entries.
 - Folding ranges are capped at 500 entries.
+- Syntax highlights are capped by the tree itself; syntax errors are capped
+  at 500 entries.
 - Diff uses a bounded LCS table (4,000,000 cells / 20,000 lines); larger inputs
   fall back to a coarse delete-all/insert-all diff.
