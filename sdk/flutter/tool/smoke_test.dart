@@ -62,8 +62,12 @@ void main() {
     check(containsToken(tokens, TokenKind.number), 'number token');
     check(core.supportsStructuralSyntax('python'), 'python grammar is bundled');
     check(
-      !core.supportsStructuralSyntax('javascript'),
-      'javascript grammar is not bundled',
+      core.supportsStructuralSyntax('javascript'),
+      'javascript grammar is bundled',
+    );
+    check(
+      !core.supportsStructuralSyntax('rust'),
+      'unbundled grammar is reported as missing',
     );
 
     final syntax = document.syntaxTree();
@@ -91,7 +95,27 @@ void main() {
       syntax.dispose();
     }
 
-    final noGrammarDoc = core.createDocument(language: 'javascript');
+    final jsSyntaxDoc = core.createDocument(language: 'javascript');
+    jsSyntaxDoc.text = '// note\n'
+        'function add(a, b) {\n'
+        '  return a + b;\n'
+        '}\n'
+        "add(1, 2);\n";
+    final jsSyntax = jsSyntaxDoc.syntaxTree();
+    check(jsSyntax != null, 'javascript syntax tree is available');
+    if (jsSyntax != null) {
+      check(jsSyntax.language == 'javascript', 'javascript tree language');
+      check(jsSyntax.rootType == 'program', 'javascript tree root');
+      check(!jsSyntax.hasErrors, 'valid javascript has no syntax errors');
+      check(
+        jsSyntax.highlights.any((highlight) => highlight.capture == 'keyword'),
+        'javascript keyword highlight',
+      );
+      jsSyntax.dispose();
+    }
+    jsSyntaxDoc.dispose();
+
+    final noGrammarDoc = core.createDocument(language: 'rust');
     check(noGrammarDoc.syntaxTree() == null, 'no grammar means no syntax tree');
     noGrammarDoc.dispose();
 

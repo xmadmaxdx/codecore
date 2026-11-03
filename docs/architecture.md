@@ -152,7 +152,7 @@ HTML/XML tags and CSS properties.
 The lexer is explicitly **not** Tree-sitter. It does not build a syntax tree
 or understand scopes or types. Capability flags advertise syntax, completion,
 diagnostics and folding only. Structural parsing is a separate layer and is
-currently available for Python only.
+currently bundled for Python and JavaScript.
 
 ## Language services
 
@@ -171,7 +171,21 @@ lock, but do not make tokenization incremental.
 
 ## Structural syntax (Tree-sitter)
 
-`core/syntax` wraps a vendored Tree-sitter runtime and the Python grammar.
+`core/syntax` wraps a vendored Tree-sitter runtime and a table of bundled
+grammars. The table is the extension point: `core/syntax/syntax.cpp` maps
+canonical ids and aliases to a generated parser and a highlight query header.
+Adding a language requires a vendored grammar, one table row, one query header
+and one line in each CMake source list; nothing above this layer changes.
+
+Current table:
+
+| Grammar | Accepted ids | Query |
+|---|---|---|
+| Python | `python`, `py`, `python3` | `python_highlights.h` |
+| JavaScript (incl. JSX) | `javascript`, `js`, `jsx`, `mjs`, `cjs` | `javascript_highlights.h` |
+
+Aliases resolve to the canonical id, so a tree parsed from `js` reports
+`javascript`. Unknown ids return no tree rather than a fabricated one.
 
 - `SyntaxTree::parse` builds a tree from a full text buffer.
 - `SyntaxTree::reparse` takes the previous immutable tree, derives one byte
@@ -179,16 +193,17 @@ lock, but do not make tokenization incremental.
   applies `ts_tree_edit` and reparses. Tree-sitter reuses unchanged subtrees.
 - `Document` caches the tree by version and language, so repeated
   `syntaxTree()` calls on one version do not parse again.
-- Highlights come from a bundled, predicate-free Python query. Overlapping
-  captures are deduplicated by specificity (keyword, comment, string,
-  number, function, type, property, variable, operator, punctuation).
+- Highlights come from a bundled, predicate-free query per grammar.
+  Overlapping captures are deduplicated by specificity (keyword, comment,
+  string, number, function, type, property, variable, operator, punctuation).
 - Errors are `ERROR` and `MISSING` nodes, capped at 500 per query.
 - Trees are immutable and safe to read across threads; query cursors are
   created per call.
 
 The parser does not replace the lexer. Every other language continues to use
 `core/language`. There is no grammar loader, no download path and no public
-Tree-sitter query API.
+Tree-sitter query API. Grammar additions are compiled in, not downloaded,
+until a grammar-pack mechanism exists.
 
 ## Background analysis
 

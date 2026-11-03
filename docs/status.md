@@ -32,7 +32,7 @@ covered by the verification below; it does not imply production hardening.
 | Brackets | Matching bracket lookup, bracket-aware diagnostics |
 | Languages | 23 language definitions with comments, strings, keywords, types, builtins |
 | Syntax | Lexical tokens for comments, strings, numbers, keywords, tags, attributes, CSS properties |
-| Structural syntax | Tree-sitter runtime plus Python grammar, incremental reparse, structural highlights, syntax errors, node lookup. Core, C ABI, Dart and Kotlin SDKs. |
+| Structural syntax | Tree-sitter runtime plus Python and JavaScript grammars, incremental reparse, structural highlights, syntax errors, node lookup. Core, C ABI, Dart and Kotlin SDKs. |
 | Completion | Keywords, types, builtins, document symbols; prefix filter, ranking, 100-item cap |
 | Diagnostics | Unmatched/unclosed brackets, unterminated strings and block comments |
 | Folding | Brace ranges, multi-line comment ranges |
@@ -58,14 +58,14 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 | Native tests | `./build/native/codecore_tests.exe` | **3,038 checks, 0 failures** |
 | LSP tests | `./build/native/codecore_lsp_tests.exe` | **59 checks, 0 failures** |
 | Viewport/background tests | `./build/native/codecore_performance_tests.exe` | **36 checks, 0 failures** |
-| Tree-sitter syntax tests | `./build/native/codecore_syntax_tests.exe` | **137 checks, 0 failures** |
+| Tree-sitter syntax tests | `./build/native/codecore_syntax_tests.exe` | **223 checks, 0 failures** |
 | CTest | `ctest --test-dir build/native --output-on-failure` | 4/4 passed |
 | Dart analyze | `dart analyze` in `sdk/flutter` | No issues |
-| Dart FFI smoke | `dart run tool/smoke_test.dart` | **99 checks, 0 failures** |
+| Dart FFI smoke | `dart run tool/smoke_test.dart` | **105 checks, 0 failures** |
 | JNI build | `cmake --build build/native -DCODECORE_BUILD_JNI=ON` | Success |
-| JNI smoke | `java -Djava.library.path=build/native -cp build/jni-test JniSmokeTest` | **112 checks, 0 failures** |
+| JNI smoke | `java -Djava.library.path=build/native -cp build/jni-test JniSmokeTest` | Harness updated for both grammars; this machine's Application Control policy blocked loading the freshly built DLL, so the new checks are unrun (native and Dart cover the same grammar path) |
 | Kotlin Gradle build | `gradlew.bat :assembleDebug` | **BUILD SUCCESSFUL**; Kotlin and Android/JNI sources compiled, debug AAR produced |
-| Android native build | `libcodecore_jni.so` for 4 ABIs | `tree_sitter_python` and `ts_parser_parse_string` linked in |
+| Android native build | `libcodecore_jni.so` for 4 ABIs | `tree_sitter_python`, `tree_sitter_javascript` and `ts_parser_parse_string` linked in |
 | LSP SDK surface | `dart analyze`, `gradlew.bat :assembleDebug` | Clean / BUILD SUCCESSFUL |
 | Flutter Android plugin | Not built on this machine | Plugin sources and CMake build are present |
 | Benchmark | `build/native/codecore_benchmark.exe` | Results recorded below; no target claimed |
@@ -82,7 +82,7 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 
 Do not treat any of these as available:
 
-- Tree-sitter grammars beyond Python; no grammar loader or grammar package yet.
+- Tree-sitter grammars beyond Python and JavaScript; no grammar loader or grammar package yet.
 - Language-server process, pipe and socket managers; no server is bundled.
 - Semantic intelligence independent of LSP.
 - AI model providers, prompt orchestration, agent loops, chat, multi-file edits.

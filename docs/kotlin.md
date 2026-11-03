@@ -95,8 +95,9 @@ document.close()
 
 ## Structural syntax
 
-Tree-sitter is bundled for `python` only. `syntaxTree()` returns `null` for a
-language without a grammar; lexical tokens still work for every language.
+Tree-sitter is bundled for `python` and `javascript` (including JSX and the
+`js`/`jsx`/`mjs`/`cjs` aliases). `syntaxTree()` returns `null` for a language
+without a grammar; lexical tokens still work for every language.
 
 ```kotlin
 if (CodeCore.supportsStructuralSyntax("python")) {
@@ -235,5 +236,6 @@ are provided. Results are raw JSON and `LspResult.isError` marks error replies.
 - Regex search uses native ECMAScript semantics and is capped at 10,000
   matches; pathological patterns are not sandboxed.
 - No editor rendering, theme integration, or lifecycle-aware controller.
-- Structural syntax is Python-only; other languages use the lexical tokenizer.
+- Structural syntax is Python and JavaScript only; other languages use the
+  lexical tokenizer.
 - No semantic intelligence or execution.

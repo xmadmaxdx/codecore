@@ -66,8 +66,11 @@ public final class JniSmokeTest {
         check(contains(tokens, 6), "number token");
 
         check(NativeCodeCore.nativeSyntaxLanguageSupported("python"), "python grammar");
-        check(!NativeCodeCore.nativeSyntaxLanguageSupported("javascript"),
-                "javascript has no bundled grammar");
+        check(NativeCodeCore.nativeSyntaxLanguageSupported("javascript"),
+                "javascript grammar");
+        check(NativeCodeCore.nativeSyntaxLanguageSupported("js"), "javascript alias");
+        check(!NativeCodeCore.nativeSyntaxLanguageSupported("rust"),
+                "rust has no bundled grammar");
         long syntax = NativeCodeCore.nativeSyntaxTree(document);
         check(syntax != 0L, "syntax tree");
         check("python".equals(NativeCodeCore.nativeSyntaxLanguage(syntax)), "syntax language");
@@ -120,7 +123,26 @@ public final class JniSmokeTest {
         check(NativeCodeCore.nativeSetText(script, scriptSource) == 0, "set script");
         int[] folds = NativeCodeCore.nativeFoldingRanges(script);
         check(folds.length >= 6 && folds.length % 3 == 0, "folding ranges");
-        check(NativeCodeCore.nativeSyntaxTree(script) == 0L, "no grammar means no tree");
+        long jsTree = NativeCodeCore.nativeSyntaxTree(script);
+        check(jsTree != 0L, "javascript syntax tree");
+        if (jsTree != 0L) {
+            check("javascript".equals(NativeCodeCore.nativeSyntaxLanguage(jsTree)),
+                    "javascript tree language");
+            check("program".equals(NativeCodeCore.nativeSyntaxRootType(jsTree)),
+                    "javascript tree root");
+            check(!NativeCodeCore.nativeSyntaxHasErrors(jsTree), "valid javascript errors");
+            String[] jsHighlights = NativeCodeCore.nativeSyntaxHighlights(jsTree);
+            check(jsHighlights.length > 0, "javascript highlights");
+            boolean jsKeyword = false;
+            for (String line : jsHighlights) {
+                if (line.endsWith("\u001Fkeyword")) {
+                    jsKeyword = true;
+                    break;
+                }
+            }
+            check(jsKeyword, "javascript keyword highlight");
+            NativeCodeCore.nativeSyntaxTreeDestroy(jsTree);
+        }
         check(NativeCodeCore.nativeMatchBracket(script, 17) == 50, "bracket match");
         NativeCodeCore.nativeDestroy(script);
 

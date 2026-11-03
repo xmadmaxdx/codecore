@@ -151,6 +151,8 @@ void testNodeAt() {
 void testCAbi() {
   CHECK(cc_abi_version() == 5);
   CHECK(cc_syntax_language_supported("python") == 1);
+  CHECK(cc_syntax_language_supported("javascript") == 1);
+  CHECK(cc_syntax_language_supported("js") == 1);
   CHECK(cc_syntax_language_supported("rust") == 0);
 
   cc_engine* engine = cc_engine_create(nullptr);
@@ -207,6 +209,25 @@ void testCAbi() {
     cc_syntax_tree_destroy(updated);
   }
 
+  /* The same document path works for the second grammar. */
+  const int32_t javascript = cc_engine_find_language(engine, "javascript");
+  CHECK(javascript >= 0);
+  CHECK(cc_document_set_language(document, javascript) == CC_STATUS_OK);
+  const char* jsCode =
+      "function sum(a, b) {\n"
+      "  return a + b;\n"
+      "}\n";
+  CHECK(cc_document_set_text(document, jsCode, std::strlen(jsCode)) == CC_STATUS_OK);
+  cc_syntax_tree* jsTree = cc_document_syntax_tree(document);
+  CHECK(jsTree != nullptr);
+  if (jsTree) {
+    CHECK(std::strcmp(cc_syntax_tree_language(jsTree), "javascript") == 0);
+    CHECK(std::strcmp(cc_syntax_tree_root_type(jsTree), "program") == 0);
+    CHECK(cc_syntax_tree_has_errors(jsTree) == 0);
+    CHECK(cc_syntax_tree_highlight_count(jsTree) > 0);
+    cc_syntax_tree_destroy(jsTree);
+  }
+
   /* A language without a bundled grammar must not fabricate a tree. */
   CHECK(cc_document_set_language(document, cc_engine_find_language(engine, "rust")) ==
         CC_STATUS_OK);
@@ -217,10 +238,83 @@ void testCAbi() {
   cc_engine_destroy(engine);
 }
 
+void testJavaScript() {
+  const std::string code =
+      "// greeting\n"
+      "function greet(name) {\n"
+      "  const message = `hello ${name}`;\n"
+      "  return message;\n"
+      "}\n"
+      "greet('world');\n";
+  auto tree = codecore::SyntaxTree::parse(code, "javascript");
+  CHECK(tree != nullptr);
+  if (!tree) {
+    return;
+  }
+
+  CHECK(tree->languageId() == "javascript");
+  CHECK(tree->rootType() == "program");
+  CHECK(!tree->hasErrors());
+  CHECK(tree->nodeCount() > 20);
+
+  const auto highlights = tree->highlights();
+  CHECK(!highlights.empty());
+  CHECK(hasCapture(highlights, "comment"));
+  CHECK(hasCapture(highlights, "keyword"));
+  CHECK(hasCapture(highlights, "function"));
+  CHECK(hasCapture(highlights, "string"));
+  for (const auto& highlight : highlights) {
+    CHECK(highlight.start < highlight.end);
+    CHECK(highlight.end <= code.size());
+  }
+
+  /* Aliases resolve to the canonical grammar id. */
+  auto alias = codecore::SyntaxTree::parse(code, "js");
+  CHECK(alias != nullptr);
+  if (alias) {
+    CHECK(alias->languageId() == "javascript");
+    CHECK(!alias->highlights().empty());
+  }
+
+  /* JSX is part of the JavaScript grammar, so tags parse without errors. */
+  auto jsx = codecore::SyntaxTree::parse("const el = <div className=\"a\">hi</div>;\n", "jsx");
+  CHECK(jsx != nullptr);
+  if (jsx) {
+    CHECK(!jsx->hasErrors());
+    CHECK(hasCapture(jsx->highlights(), "property"));
+  }
+
+  auto broken = codecore::SyntaxTree::parse("function () {\n", "javascript");
+  CHECK(broken != nullptr);
+  if (broken) {
+    CHECK(broken->hasErrors());
+    CHECK(!broken->errors().empty());
+  }
+
+  const std::string next =
+      "// greeting\n"
+      "function greet(name) {\n"
+      "  const message = `hello ${name}`;\n"
+      "  console.log(message);\n"
+      "  return message;\n"
+      "}\n"
+      "greet('world');\n";
+  auto updated = codecore::SyntaxTree::reparse(*tree, next);
+  CHECK(updated != nullptr);
+  if (updated) {
+    CHECK(updated->text() == next);
+    CHECK(!updated->hasErrors());
+    CHECK(updated->nodeCount() > tree->nodeCount());
+    CHECK(tree->text() == code);
+  }
+}
+
 void testUnsupportedLanguage() {
   CHECK(!codecore::syntaxLanguageSupported("rust"));
   CHECK(!codecore::syntaxLanguageSupported(""));
   CHECK(codecore::syntaxLanguageSupported("python"));
+  CHECK(codecore::syntaxLanguageSupported("javascript"));
+  CHECK(codecore::syntaxLanguageSupported("js"));
   CHECK(codecore::SyntaxTree::parse("fn main() {}\n", "rust") == nullptr);
 }
 
@@ -231,6 +325,7 @@ int main() {
   testErrors();
   testIncrementalReparse();
   testNodeAt();
+  testJavaScript();
   testUnsupportedLanguage();
   testCAbi();
 

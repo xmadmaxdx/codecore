@@ -7,25 +7,54 @@
 
 #include <tree_sitter/api.h>
 
+#include "core/syntax/javascript_highlights.h"
 #include "core/syntax/python_highlights.h"
 
 extern "C" {
+const TSLanguage* tree_sitter_javascript(void);
 const TSLanguage* tree_sitter_python(void);
 }
 
 namespace codecore {
 namespace {
 
-const TSLanguage* languageFor(std::string_view id) {
-  if (id == "python" || id == "python3" || id == "py") {
-    return tree_sitter_python();
-  }
-  return nullptr;
-}
+/*
+ * Bundled grammar table. Adding a language means vendoring its generated
+ * parser, adding one row here and one highlight header. Everything above this
+ * layer (document, C ABI, Dart, JNI) is language-agnostic.
+ */
+struct GrammarEntry {
+  const char* id;
+  /* Space-separated accepted ids. The canonical id above is always accepted. */
+  const char* aliases;
+  const TSLanguage* (*language)();
+  const char* query;
+};
 
-const char* queryFor(std::string_view id) {
-  if (id == "python" || id == "python3" || id == "py") {
-    return syntax_queries::kPythonHighlights;
+constexpr GrammarEntry kGrammars[] = {
+    {"python", "py python3", tree_sitter_python, syntax_queries::kPythonHighlights},
+    {"javascript", "js jsx mjs cjs", tree_sitter_javascript,
+     syntax_queries::kJavaScriptHighlights},
+};
+
+const GrammarEntry* findGrammar(std::string_view id) {
+  for (const GrammarEntry& grammar : kGrammars) {
+    if (id == grammar.id) {
+      return &grammar;
+    }
+    const std::string_view aliases(grammar.aliases);
+    size_t offset = 0;
+    while (offset < aliases.size()) {
+      const size_t space = aliases.find(' ', offset);
+      const size_t end = space == std::string_view::npos ? aliases.size() : space;
+      if (id == aliases.substr(offset, end - offset)) {
+        return &grammar;
+      }
+      if (space == std::string_view::npos) {
+        break;
+      }
+      offset = space + 1;
+    }
   }
   return nullptr;
 }
@@ -158,12 +187,16 @@ SyntaxTree::SyntaxTree() : impl_(std::make_unique<Impl>()) {}
 SyntaxTree::~SyntaxTree() = default;
 
 bool syntaxLanguageSupported(std::string_view languageId) {
-  return languageFor(languageId) != nullptr;
+  return findGrammar(languageId) != nullptr;
 }
 
 std::shared_ptr<SyntaxTree> SyntaxTree::parse(std::string_view text,
                                               std::string_view languageId) {
-  const TSLanguage* language = languageFor(languageId);
+  const GrammarEntry* grammar = findGrammar(languageId);
+  if (!grammar) {
+    return nullptr;
+  }
+  const TSLanguage* language = grammar->language();
   if (!language) {
     return nullptr;
   }
@@ -187,7 +220,8 @@ std::shared_ptr<SyntaxTree> SyntaxTree::parse(std::string_view text,
   auto result = std::shared_ptr<SyntaxTree>(new SyntaxTree());
   result->impl_->tree.reset(tree);
   result->impl_->text.assign(text.data(), text.size());
-  result->impl_->languageId.assign(languageId.data(), languageId.size());
+  /* Aliases resolve to the canonical grammar id; "js" becomes "javascript". */
+  result->impl_->languageId = grammar->id;
   result->impl_->language = language;
   return result;
 }
@@ -317,10 +351,11 @@ std::vector<SyntaxHighlight> SyntaxTree::highlights() const {
   if (!impl_->tree || !impl_->language) {
     return result;
   }
-  const char* source = queryFor(impl_->languageId);
-  if (!source) {
+  const GrammarEntry* grammar = findGrammar(impl_->languageId);
+  if (!grammar || !grammar->query) {
     return result;
   }
+  const char* source = grammar->query;
 
   uint32_t errorOffset = 0;
   TSQueryError errorType = TSQueryErrorNone;

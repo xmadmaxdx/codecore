@@ -35,12 +35,15 @@ set(CODECORE_CORE_SOURCES
 
 find_package(Threads REQUIRED)
 
-# Vendored Tree-sitter runtime and the bundled Python grammar. This target is
-# built as C with warnings suppressed: parser.c is generated code.
+# Vendored Tree-sitter runtime and the bundled grammars. This target is built
+# as C with warnings suppressed: parser.c is generated code. Each grammar adds
+# exactly one parser row plus one scanner row.
 add_library(codecore_tree_sitter STATIC
   third_party/tree-sitter/lib/src/lib.c
   third_party/tree-sitter-python/src/parser.c
   third_party/tree-sitter-python/src/scanner.c
+  third_party/tree-sitter-javascript/src/parser.c
+  third_party/tree-sitter-javascript/src/scanner.c
 )
 target_include_directories(codecore_tree_sitter
   PUBLIC
@@ -48,6 +51,7 @@ target_include_directories(codecore_tree_sitter
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter/lib/src
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-python/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-javascript/src
 )
 set_target_properties(codecore_tree_sitter PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(MSVC)
@@ -57,7 +61,8 @@ else()
 endif()
 
 target_include_directories(codecore_tree_sitter PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-python/src)
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-python/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-javascript/src)
 
 add_library(codecore_objects OBJECT ${CODECORE_CORE_SOURCES})
 set_target_properties(codecore_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)

@@ -31,12 +31,16 @@ add_library(codecore SHARED
   "${CODECORE_ROOT}/third_party/tree-sitter/lib/src/lib.c"
   "${CODECORE_ROOT}/third_party/tree-sitter-python/src/parser.c"
   "${CODECORE_ROOT}/third_party/tree-sitter-python/src/scanner.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-javascript/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-javascript/src/scanner.c"
 )
 
 set_source_files_properties(
   "${CODECORE_ROOT}/third_party/tree-sitter/lib/src/lib.c"
   "${CODECORE_ROOT}/third_party/tree-sitter-python/src/parser.c"
   "${CODECORE_ROOT}/third_party/tree-sitter-python/src/scanner.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-javascript/src/parser.c"
+  "${CODECORE_ROOT}/third_party/tree-sitter-javascript/src/scanner.c"
   PROPERTIES COMPILE_OPTIONS "-w"
 )
 
@@ -46,6 +50,7 @@ target_include_directories(codecore PRIVATE
   "${CODECORE_ROOT}/third_party/tree-sitter/lib/include"
   "${CODECORE_ROOT}/third_party/tree-sitter/lib/src"
   "${CODECORE_ROOT}/third_party/tree-sitter-python/src"
+  "${CODECORE_ROOT}/third_party/tree-sitter-javascript/src"
 )
 
 target_compile_features(codecore PRIVATE cxx_std_17)

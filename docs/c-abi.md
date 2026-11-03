@@ -286,7 +286,9 @@ cc_lsp_destroy(lsp);
 
 ## Structural syntax (Tree-sitter)
 
-Only languages with a bundled grammar produce a tree. Currently that is Python.
+Only languages with a bundled grammar produce a tree. Currently that is Python
+(`python`, `py`, `python3`) and JavaScript (`javascript`, `js`, `jsx`, `mjs`,
+`cjs`; JSX parses with the JavaScript grammar).
 
 ```c
 cc_syntax_tree* tree = cc_document_syntax_tree(doc);
@@ -313,7 +315,8 @@ if (tree) {
   unchanged version reuse the cached tree; building the handle still walks or
   queries the tree for counts and ranges.
 - Returns `NULL` when the document's language has no bundled grammar. Check
-  `cc_syntax_language_supported("python")` when the grammar is required.
+  `cc_syntax_language_supported("python")` or
+  `cc_syntax_language_supported("javascript")` when the grammar is required.
 - Highlight and error strings point into the tree handle and stay valid until
   `cc_syntax_tree_destroy`.
 - `start`/`end` are UTF-8 byte offsets. Row/column values in `cc_syntax_error`
