@@ -13,6 +13,8 @@
 #include "core/engine/engine.h"
 #include "core/exec/execution.h"
 #include "core/language/language.h"
+#include "core/runtime/runtime.h"
+#include "core/term/terminal.h"
 #include "core/viewport/viewport.h"
 
 struct cc_engine {
@@ -37,6 +39,14 @@ struct cc_analyzer {
 
 struct cc_execution {
   std::unique_ptr<codecore::ExecutionSession> session;
+};
+
+struct cc_terminal {
+  std::unique_ptr<codecore::TerminalSession> session;
+};
+
+struct cc_runtime_registry {
+  codecore::RuntimeRegistry registry;
 };
 
 struct cc_syntax_tree {
@@ -260,7 +270,7 @@ extern "C" {
 
 uint32_t cc_abi_version(void) { return CODECORE_ABI_VERSION; }
 
-const char* cc_version_string(void) { return "0.5.0"; }
+const char* cc_version_string(void) { return "0.6.0"; }
 
 void* cc_alloc(size_t size) { return std::malloc(size == 0 ? 1 : size); }
 
@@ -1396,5 +1406,333 @@ int32_t cc_execution_exit_code(const cc_execution* execution) {
 }
 
 void cc_execution_destroy(cc_execution* execution) { delete execution; }
+
+cc_terminal* cc_terminal_start(const cc_terminal_options* options, char** out_error) {
+  if (out_error) {
+    *out_error = nullptr;
+  }
+  if (!options || (options->arg_count > 0 && !options->args) ||
+      (options->env_count > 0 && (!options->env_keys || !options->env_values))) {
+    if (out_error) {
+      *out_error = duplicateString("invalid terminal options");
+    }
+    return nullptr;
+  }
+
+  codecore::TerminalOptions internal;
+  if (options->command) {
+    internal.command = options->command;
+  }
+  for (size_t index = 0; index < options->arg_count; ++index) {
+    internal.arguments.emplace_back(options->args[index] ? options->args[index] : "");
+  }
+  if (options->working_directory) {
+    internal.workingDirectory = options->working_directory;
+  }
+  for (size_t index = 0; index < options->env_count; ++index) {
+    internal.environment.emplace_back(
+        options->env_keys[index] ? options->env_keys[index] : "",
+        options->env_values[index] ? options->env_values[index] : "");
+  }
+  if (options->columns > 0) {
+    internal.columns = options->columns;
+  }
+  if (options->rows > 0) {
+    internal.rows = options->rows;
+  }
+  if (options->max_queued_bytes > 0) {
+    internal.maxQueuedOutputBytes = options->max_queued_bytes;
+  }
+
+  std::string error;
+  auto session = codecore::TerminalSession::start(internal, &error);
+  if (!session) {
+    if (out_error) {
+      *out_error = duplicateString(error.empty() ? "terminal failed to start" : error);
+    }
+    return nullptr;
+  }
+  auto* wrapper = new (std::nothrow) cc_terminal();
+  if (!wrapper) {
+    if (out_error) {
+      *out_error = duplicateString("out of memory");
+    }
+    return nullptr;
+  }
+  wrapper->session = std::move(session);
+  return wrapper;
+}
+
+uint8_t cc_terminal_poll(cc_terminal* terminal, cc_terminal_event* out_event) {
+  if (!terminal || !terminal->session || !out_event) {
+    return 0;
+  }
+  std::memset(out_event, 0, sizeof(*out_event));
+  codecore::TerminalEvent event;
+  if (!terminal->session->poll(&event)) {
+    return 0;
+  }
+  out_event->kind = static_cast<uint32_t>(event.kind);
+  out_event->sequence = event.sequence;
+  out_event->exit_code = event.exitCode;
+  if (event.kind == codecore::TerminalEvent::Kind::Output) {
+    char* data = static_cast<char*>(cc_alloc(event.data.size() + 1));
+    if (!data) {
+      return 0;
+    }
+    std::memcpy(data, event.data.data(), event.data.size());
+    data[event.data.size()] = '\0';
+    out_event->data = data;
+    out_event->length = event.data.size();
+  }
+  return 1;
+}
+
+cc_status cc_terminal_write(cc_terminal* terminal, const char* data, size_t length) {
+  if (!terminal || !terminal->session || (!data && length > 0)) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  if (terminal->session->write(std::string_view(data ? data : "", length))) {
+    return CC_STATUS_OK;
+  }
+  return terminal->session->running() ? CC_STATUS_IO_ERROR : CC_STATUS_NOT_RUNNING;
+}
+
+uint8_t cc_terminal_resize(cc_terminal* terminal, uint32_t columns, uint32_t rows) {
+  return terminal && terminal->session && terminal->session->resize(columns, rows) ? 1 : 0;
+}
+
+uint8_t cc_terminal_wait(cc_terminal* terminal, uint32_t timeout_ms) {
+  return terminal && terminal->session && terminal->session->wait(timeout_ms) ? 1 : 0;
+}
+
+uint8_t cc_terminal_is_running(const cc_terminal* terminal) {
+  return terminal && terminal->session && terminal->session->running() ? 1 : 0;
+}
+
+uint8_t cc_terminal_uses_pty(const cc_terminal* terminal) {
+  return terminal && terminal->session && terminal->session->usesPty() ? 1 : 0;
+}
+
+uint32_t cc_terminal_columns(const cc_terminal* terminal) {
+  return terminal && terminal->session ? terminal->session->columns() : 0;
+}
+
+uint32_t cc_terminal_rows(const cc_terminal* terminal) {
+  return terminal && terminal->session ? terminal->session->rows() : 0;
+}
+
+int32_t cc_terminal_exit_code(const cc_terminal* terminal) {
+  return terminal && terminal->session ? terminal->session->exitCode() : -1;
+}
+
+const char* cc_terminal_last_error(const cc_terminal* terminal) {
+  return terminal && terminal->session ? terminal->session->lastError().c_str() : "";
+}
+
+void cc_terminal_destroy(cc_terminal* terminal) { delete terminal; }
+
+namespace {
+
+codecore::RuntimeRequest runtimeRequestFrom(const cc_runtime_request* request) {
+  codecore::RuntimeRequest internal;
+  if (!request) {
+    return internal;
+  }
+  if (request->language) {
+    internal.language = request->language;
+  }
+  if (request->source_path) {
+    internal.sourcePath = request->source_path;
+  }
+  for (size_t index = 0; index < request->arg_count; ++index) {
+    internal.arguments.emplace_back(request->args[index] ? request->args[index] : "");
+  }
+  if (request->working_directory) {
+    internal.workingDirectory = request->working_directory;
+  }
+  for (size_t index = 0; index < request->env_count; ++index) {
+    internal.environment.emplace_back(
+        request->env_keys[index] ? request->env_keys[index] : "",
+        request->env_values[index] ? request->env_values[index] : "");
+  }
+  internal.timeoutMs = request->timeout_ms;
+  internal.compile = request->compile != 0;
+  if (request->output_path) {
+    internal.outputPath = request->output_path;
+  }
+  return internal;
+}
+
+uint8_t fillRuntimeInfo(const codecore::RuntimeDescriptor& descriptor, cc_runtime_info* out_info) {
+  if (!out_info) {
+    return 0;
+  }
+  std::memset(out_info, 0, sizeof(*out_info));
+  std::string languages;
+  for (const std::string& language : descriptor.languages) {
+    if (!languages.empty()) {
+      languages.push_back(' ');
+    }
+    languages += language;
+  }
+  out_info->id = duplicateString(descriptor.id);
+  out_info->display_name = duplicateString(descriptor.displayName);
+  out_info->languages = duplicateString(languages);
+  out_info->executable = duplicateString(descriptor.executable);
+  out_info->version = duplicateString(descriptor.version);
+  out_info->available = descriptor.available ? 1 : 0;
+  out_info->has_compiler = descriptor.compileExecutable.empty() ? 0 : 1;
+  return 1;
+}
+
+}  // namespace
+
+cc_runtime_registry* cc_runtime_registry_create(void) {
+  auto* wrapper = new (std::nothrow) cc_runtime_registry();
+  if (!wrapper) {
+    return nullptr;
+  }
+  wrapper->registry = codecore::RuntimeRegistry::discover();
+  return wrapper;
+}
+
+void cc_runtime_registry_destroy(cc_runtime_registry* registry) { delete registry; }
+
+size_t cc_runtime_count(const cc_runtime_registry* registry) {
+  return registry ? registry->registry.count() : 0;
+}
+
+uint8_t cc_runtime_at(const cc_runtime_registry* registry, size_t index,
+                      cc_runtime_info* out_info) {
+  if (!registry) {
+    return 0;
+  }
+  const codecore::RuntimeDescriptor* descriptor = registry->registry.at(index);
+  return descriptor ? fillRuntimeInfo(*descriptor, out_info) : 0;
+}
+
+void cc_runtime_info_free(cc_runtime_info* info) {
+  if (!info) {
+    return;
+  }
+  cc_string_free(info->id);
+  cc_string_free(info->display_name);
+  cc_string_free(info->languages);
+  cc_string_free(info->executable);
+  cc_string_free(info->version);
+  std::memset(info, 0, sizeof(*info));
+}
+
+const char* cc_runtime_find_for_language(const cc_runtime_registry* registry,
+                                         const char* language) {
+  if (!registry || !language) {
+    return nullptr;
+  }
+  const codecore::RuntimeDescriptor* descriptor = registry->registry.forLanguage(language);
+  return descriptor ? descriptor->id.c_str() : nullptr;
+}
+
+size_t cc_runtime_probe_versions(cc_runtime_registry* registry, uint32_t timeout_ms) {
+  return registry ? registry->registry.probeVersions(timeout_ms) : 0;
+}
+
+cc_status cc_runtime_plan_request(const cc_runtime_registry* registry,
+                                  const cc_runtime_request* request,
+                                  cc_runtime_plan* out_plan, char** out_error) {
+  if (out_error) {
+    *out_error = nullptr;
+  }
+  if (!registry || !out_plan) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  std::memset(out_plan, 0, sizeof(*out_plan));
+
+  codecore::RuntimePlan plan;
+  std::string error;
+  const codecore::Status status = registry->registry.plan(runtimeRequestFrom(request), &plan, &error);
+  if (status != codecore::Status::Ok) {
+    if (out_error) {
+      *out_error = duplicateString(error);
+    }
+    return mapStatus(status);
+  }
+
+  out_plan->needs_compile = plan.needsCompile ? 1 : 0;
+  const auto copyArguments = [](const std::vector<std::string>& arguments, char*** out_args,
+                                size_t* out_count) {
+    if (arguments.empty()) {
+      *out_args = nullptr;
+      *out_count = 0;
+      return;
+    }
+    auto** array = static_cast<char**>(cc_alloc(arguments.size() * sizeof(char*)));
+    if (!array) {
+      *out_args = nullptr;
+      *out_count = 0;
+      return;
+    }
+    for (size_t index = 0; index < arguments.size(); ++index) {
+      array[index] = duplicateString(arguments[index]);
+    }
+    *out_args = array;
+    *out_count = arguments.size();
+  };
+
+  if (plan.needsCompile) {
+    out_plan->compile_command = duplicateString(plan.compile.command);
+    copyArguments(plan.compile.arguments, &out_plan->compile_args, &out_plan->compile_arg_count);
+  }
+  out_plan->run_command = duplicateString(plan.run.command);
+  copyArguments(plan.run.arguments, &out_plan->run_args, &out_plan->run_arg_count);
+  return CC_STATUS_OK;
+}
+
+void cc_runtime_plan_free(cc_runtime_plan* plan) {
+  if (!plan) {
+    return;
+  }
+  cc_string_free(plan->compile_command);
+  for (size_t index = 0; index < plan->compile_arg_count; ++index) {
+    cc_string_free(plan->compile_args[index]);
+  }
+  std::free(plan->compile_args);
+  cc_string_free(plan->run_command);
+  for (size_t index = 0; index < plan->run_arg_count; ++index) {
+    cc_string_free(plan->run_args[index]);
+  }
+  std::free(plan->run_args);
+  std::memset(plan, 0, sizeof(*plan));
+}
+
+cc_execution* cc_runtime_run(const cc_runtime_registry* registry,
+                             const cc_runtime_request* request, char** out_error) {
+  if (out_error) {
+    *out_error = nullptr;
+  }
+  if (!registry) {
+    if (out_error) {
+      *out_error = duplicateString("runtime registry is null");
+    }
+    return nullptr;
+  }
+  std::string error;
+  auto session = registry->registry.run(runtimeRequestFrom(request), &error);
+  if (!session) {
+    if (out_error) {
+      *out_error = duplicateString(error.empty() ? "runtime failed" : error);
+    }
+    return nullptr;
+  }
+  auto* wrapper = new (std::nothrow) cc_execution();
+  if (!wrapper) {
+    if (out_error) {
+      *out_error = duplicateString("out of memory");
+    }
+    return nullptr;
+  }
+  wrapper->session = std::move(session);
+  return wrapper;
+}
 
 }  // extern "C"

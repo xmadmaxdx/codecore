@@ -70,7 +70,7 @@ extern "C" {
 #define CODECORE_VERSION_MAJOR 0
 #define CODECORE_VERSION_MINOR 5
 #define CODECORE_VERSION_PATCH 0
-#define CODECORE_ABI_VERSION 6u
+#define CODECORE_ABI_VERSION 7u
 
 #if defined(_WIN32) && defined(CODECORE_BUILD_SHARED)
 #define CC_API __declspec(dllexport)
@@ -625,6 +625,119 @@ CC_API void cc_lsp_cancel(cc_lsp_client* client, int64_t id);
 CC_API void cc_lsp_shutdown(cc_lsp_client* client);
 CC_API void cc_lsp_exit(cc_lsp_client* client);
 CC_API const char* cc_lsp_last_error(const cc_lsp_client* client);
+
+/*
+ * Terminal sessions
+ * -----------------
+ * An interactive shell attached to a pseudo-terminal on POSIX and Android.
+ * Windows uses piped stdin/stdout: check cc_terminal_uses_pty before assuming
+ * terminal semantics. Output is a raw byte stream, polled by the host. The UI
+ * is the host's responsibility.
+ */
+typedef struct cc_terminal cc_terminal;
+
+typedef struct cc_terminal_options {
+  /* NULL or empty selects the platform default shell. */
+  const char* command;
+  size_t arg_count;
+  const char** args;
+  const char* working_directory;
+  size_t env_count;
+  const char** env_keys;
+  const char** env_values;
+  uint32_t columns;
+  uint32_t rows;
+  /* 0 uses the 1 MiB default output backlog. */
+  size_t max_queued_bytes;
+} cc_terminal_options;
+
+typedef struct cc_terminal_event {
+  /* 0 = output, 1 = exit */
+  uint32_t kind;
+  uint64_t sequence;
+  /* Output events only; allocated, release with cc_string_free. */
+  char* data;
+  size_t length;
+  int32_t exit_code;
+} cc_terminal_event;
+
+CC_API cc_terminal* cc_terminal_start(const cc_terminal_options* options, char** out_error);
+CC_API uint8_t cc_terminal_poll(cc_terminal* terminal, cc_terminal_event* out_event);
+CC_API cc_status cc_terminal_write(cc_terminal* terminal, const char* data, size_t length);
+CC_API uint8_t cc_terminal_resize(cc_terminal* terminal, uint32_t columns, uint32_t rows);
+CC_API uint8_t cc_terminal_wait(cc_terminal* terminal, uint32_t timeout_ms);
+CC_API uint8_t cc_terminal_is_running(const cc_terminal* terminal);
+CC_API uint8_t cc_terminal_uses_pty(const cc_terminal* terminal);
+CC_API uint32_t cc_terminal_columns(const cc_terminal* terminal);
+CC_API uint32_t cc_terminal_rows(const cc_terminal* terminal);
+CC_API int32_t cc_terminal_exit_code(const cc_terminal* terminal);
+CC_API const char* cc_terminal_last_error(const cc_terminal* terminal);
+CC_API void cc_terminal_destroy(cc_terminal* terminal);
+
+/*
+ * Runtime registry
+ * ----------------
+ * CodeCore ships no runtimes. The registry maps language ids to executables
+ * already installed on the machine, resolves them through PATH, and builds the
+ * compile and run commands for them. Version strings are only filled after
+ * cc_runtime_probe_versions, which spawns each runtime once.
+ *
+ * cc_runtime_run compiles when needed, waits for the compiler, and returns a
+ * running cc_execution for the program. Compiler output is returned through
+ * out_error when compilation fails.
+ */
+typedef struct cc_runtime_registry cc_runtime_registry;
+
+typedef struct cc_runtime_info {
+  char* id;
+  char* display_name;
+  /* Space-separated language ids accepted by this runtime. */
+  char* languages;
+  char* executable;
+  char* version;
+  uint8_t available;
+  uint8_t has_compiler;
+} cc_runtime_info;
+
+typedef struct cc_runtime_request {
+  const char* language;
+  const char* source_path;
+  size_t arg_count;
+  const char** args;
+  const char* working_directory;
+  size_t env_count;
+  const char** env_keys;
+  const char** env_values;
+  uint32_t timeout_ms;
+  uint8_t compile;
+  const char* output_path;
+} cc_runtime_request;
+
+typedef struct cc_runtime_plan {
+  uint8_t needs_compile;
+  char* compile_command;
+  size_t compile_arg_count;
+  char** compile_args;
+  char* run_command;
+  size_t run_arg_count;
+  char** run_args;
+} cc_runtime_plan;
+
+CC_API cc_runtime_registry* cc_runtime_registry_create(void);
+CC_API void cc_runtime_registry_destroy(cc_runtime_registry* registry);
+CC_API size_t cc_runtime_count(const cc_runtime_registry* registry);
+CC_API uint8_t cc_runtime_at(const cc_runtime_registry* registry, size_t index,
+                             cc_runtime_info* out_info);
+CC_API void cc_runtime_info_free(cc_runtime_info* info);
+CC_API const char* cc_runtime_find_for_language(const cc_runtime_registry* registry,
+                                                const char* language);
+CC_API size_t cc_runtime_probe_versions(cc_runtime_registry* registry, uint32_t timeout_ms);
+CC_API cc_status cc_runtime_plan_request(const cc_runtime_registry* registry,
+                                         const cc_runtime_request* request,
+                                         cc_runtime_plan* out_plan, char** out_error);
+CC_API void cc_runtime_plan_free(cc_runtime_plan* plan);
+CC_API cc_execution* cc_runtime_run(const cc_runtime_registry* registry,
+                                    const cc_runtime_request* request, char** out_error);
 
 #ifdef __cplusplus
 } /* extern "C" */

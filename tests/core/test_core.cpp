@@ -90,8 +90,8 @@ cc_document* makeDocument(cc_engine* engine, int32_t languageId = 0) {
 void testVersionAndLanguages(cc_engine* engine) {
   CHECK(cc_abi_version() == CODECORE_ABI_VERSION);
   CHECK(cc_version_string() != nullptr);
-  CHECK(std::strcmp(cc_version_string(), "0.5.0") == 0);
-  CHECK(cc_abi_version() == 6);
+  CHECK(std::strcmp(cc_version_string(), "0.6.0") == 0);
+  CHECK(cc_abi_version() == 7);
   CHECK(cc_engine_language_count(engine) == 40);
   CHECK(cc_engine_find_language(engine, "python") == 0);
   CHECK(cc_engine_find_language(engine, "kotlin") == 1);

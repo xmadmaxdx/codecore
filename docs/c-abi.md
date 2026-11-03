@@ -2,8 +2,8 @@
 
 Header: `native/include/codecore/codecore.h`
 
-The ABI is versioned with `cc_abi_version()` (currently `6`) and
-`cc_version_string()` (`0.5.0`). ABI version and library version are separate:
+The ABI is versioned with `cc_abi_version()` (currently `7`) and
+`cc_version_string()` (`0.6.0`). ABI version and library version are separate:
 the ABI changes only when the binary contract changes; the library version also
 moves for behavior additions.
 
@@ -418,3 +418,66 @@ if (tree) {
   at 500 entries.
 - Diff uses a bounded LCS table (4,000,000 cells / 20,000 lines); larger inputs
   fall back to a coarse delete-all/insert-all diff.
+
+## Terminal sessions (ABI 7)
+
+```c
+cc_terminal_options options = {0};
+options.columns = 120;
+options.rows = 32;
+
+char* error = NULL;
+cc_terminal* terminal = cc_terminal_start(&options, &error);
+if (!terminal) { /* error is allocated */ cc_string_free(error); }
+
+cc_terminal_write(terminal, "make
+", 5);
+
+cc_terminal_event event;
+while (cc_terminal_poll(terminal, &event)) {
+  if (event.kind == 0) {
+    /* render event.data[0..event.length) */
+    cc_string_free(event.data);
+  }
+}
+cc_terminal_destroy(terminal);
+```
+
+- `cc_terminal_uses_pty` is `0` on Windows, where the session is a piped shell.
+- `cc_terminal_resize` returns `0` when there is no terminal device.
+- `cc_terminal_destroy` terminates the process tree and joins its threads.
+
+## Runtime registry (ABI 7)
+
+```c
+cc_runtime_registry* runtimes = cc_runtime_registry_create();
+cc_runtime_probe_versions(runtimes, 3000);
+
+cc_runtime_info info;
+for (size_t i = 0; i < cc_runtime_count(runtimes); ++i) {
+  if (cc_runtime_at(runtimes, i, &info)) {
+    printf("%s available=%d version=%s
+", info.id, info.available, info.version);
+    cc_runtime_info_free(&info);
+  }
+}
+
+cc_runtime_request request = {0};
+request.language = "python";
+request.source_path = "/project/main.py";
+request.compile = 1;
+
+cc_runtime_plan plan;
+if (cc_runtime_plan_request(runtimes, &request, &plan, &error) == CC_STATUS_OK) {
+  printf("run: %s
+", plan.run_command);
+  cc_runtime_plan_free(&plan);
+}
+
+cc_execution* run = cc_runtime_run(runtimes, &request, &error);
+```
+
+`cc_runtime_run` compiles first when the runtime needs it, then returns a running
+`cc_execution`. On a compile failure it returns `NULL` and `out_error` contains the
+compiler output. Strings returned by `cc_runtime_at` are allocated; free them with
+`cc_runtime_info_free`.

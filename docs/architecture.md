@@ -362,3 +362,27 @@ native handle. The native session is fully usable without either SDK.
 - **Lexical Level 1** delivers useful highlighting for all 40 definitions
   without grammar binaries; Tree-sitter adds structural parsing where a grammar
   is compiled in.
+
+## Incremental tokenization
+
+`TokenCache` (one per document) owns the last text, its token set and a table of
+safe restart offsets: line starts that are not inside a multi-line token, plus the
+brace depth they carry. When the text changes, the cache finds the changed span by
+prefix/suffix comparison, restarts at the closest safe offset at or before it, and
+lexes forward until the lexical state matches the old state at a safe boundary
+again. Everything after that boundary is reused with shifted offsets.
+
+`ensureLexed()` in `Analysis` takes the token set from the cache instead of
+lexing. Snapshots and worker analyses keep their own immutable `TokenSet`, so
+tokenization never runs on the caller's thread twice for the same revision. The
+lexer is resumable because `lexFrom()` starts at a token boundary and stops at
+the first boundary at or after a limit.
+
+## Terminal and runtime layers
+
+`core/term` owns one shell process and its byte stream. POSIX and Android open a
+real PTY, set the window size and hand the child a controlling terminal; Windows
+uses pipes. `core/runtime` maps language ids to installed executables, probes
+versions on request and produces the compile and run commands, reusing
+`ExecutionSession` for both steps. Neither layer adds a dependency to the engine:
+nothing is bundled, downloaded or installed.

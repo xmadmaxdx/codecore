@@ -149,7 +149,7 @@ void testNodeAt() {
 }
 
 void testCAbi() {
-  CHECK(cc_abi_version() == 6);
+  CHECK(cc_abi_version() == 7);
   CHECK(cc_syntax_language_supported("python") == 1);
   CHECK(cc_syntax_language_supported("javascript") == 1);
   CHECK(cc_syntax_language_supported("js") == 1);

@@ -111,10 +111,16 @@ std::shared_ptr<const TokenSet> TokenCache::tokensFor(const std::string& text,
     LexResult part =
         lexFrom(text, language, partStart, stopLimit, endDepth, &lexEnd, &endDepth);
     run.tokens.insert(run.tokens.end(), part.tokens.begin(), part.tokens.end());
-    run.unterminatedString = part.unterminatedString;
-    run.unterminatedStringStart = part.unterminatedStringStart;
-    run.unterminatedBlockComment = part.unterminatedBlockComment;
-    run.unterminatedBlockStart = part.unterminatedBlockStart;
+    // An unterminated literal consumes to end of text, so a later part cannot
+    // legitimately clear the flag: keep the first report.
+    if (part.unterminatedString && !run.unterminatedString) {
+      run.unterminatedString = true;
+      run.unterminatedStringStart = part.unterminatedStringStart;
+    }
+    if (part.unterminatedBlockComment && !run.unterminatedBlockComment) {
+      run.unterminatedBlockComment = true;
+      run.unterminatedBlockStart = part.unterminatedBlockStart;
+    }
 
     if (lexEnd >= size) {
       reachedEnd = true;
@@ -173,10 +179,14 @@ std::shared_ptr<const TokenSet> TokenCache::tokensFor(const std::string& text,
     // No reusable boundary: finish lexing to the end of the document.
     LexResult tail = lexFrom(text, language, lexEnd, size, endDepth, &lexEnd, &endDepth);
     run.tokens.insert(run.tokens.end(), tail.tokens.begin(), tail.tokens.end());
-    run.unterminatedString = tail.unterminatedString;
-    run.unterminatedStringStart = tail.unterminatedStringStart;
-    run.unterminatedBlockComment = tail.unterminatedBlockComment;
-    run.unterminatedBlockStart = tail.unterminatedBlockStart;
+    if (tail.unterminatedString && !run.unterminatedString) {
+      run.unterminatedString = true;
+      run.unterminatedStringStart = tail.unterminatedStringStart;
+    }
+    if (tail.unterminatedBlockComment && !run.unterminatedBlockComment) {
+      run.unterminatedBlockComment = true;
+      run.unterminatedBlockStart = tail.unterminatedBlockStart;
+    }
   }
 
   auto set = std::make_shared<TokenSet>();

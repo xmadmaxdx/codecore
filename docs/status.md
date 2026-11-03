@@ -1,13 +1,13 @@
-# Status — CodeCore Core v0.5.0
+# Status — CodeCore Core v0.6.0
 
 Release identifiers:
 
 | Identifier | Value |
 |---|---|
-| Core library version | `0.5.0` (`cc_version_string`) |
-| C ABI version | `6` (`cc_abi_version`) |
-| Dart package | `codecore 0.5.0` |
-| Kotlin module | `dev.codecore` 0.5.0 sources |
+| Core library version | `0.6.0` (`cc_version_string`) |
+| C ABI version | `7` (`cc_abi_version`) |
+| Dart package | `codecore 0.6.0` |
+| Kotlin module | `dev.codecore` 0.6.0 sources |
 | Gradle wrapper | 9.3.1 |
 | Pinned Android NDK | 28.2.13676358 |
 
@@ -165,3 +165,24 @@ These are single-run numbers on one machine, not a target. They show the
 current shape: analysis is cached per version, edits update the line index
 incrementally, and snapshot creation is cheap, while the first tokenize after
 an edit is still a full scan.
+
+## 0.6 additions and verification
+
+| Area | Details |
+|---|---|
+| Incremental tokenization | `TokenCache` keeps the previous text, tokens and safe restart offsets. An edit re-lexes from the edited line to the first converging safe boundary and shifts the untouched tail. Unterminated strings and block comments still consume to end of text and keep their flags. Markup languages re-lex fully. |
+| Terminal | `TerminalSession` streams shell bytes with a bounded backlog. POSIX/Android use `posix_openpt` with `TIOCSWINSZ` resize; Windows uses piped `cmd.exe` and reports no PTY. Exposed through `cc_terminal_*`. |
+| Runtime registry | 22 runtimes resolved through PATH (Windows `PATHEXT`, Store aliases skipped), explicit version probing, unified `plan`/`run` with a compiler step. Exposed through `cc_runtime_*`. |
+
+| Check | Command | Result |
+|---|---|---|
+| Incremental tokenization | `./build/native/codecore_incremental_tests.exe` | **426 checks, 0 failures** |
+| Terminal | `./build/native/codecore_terminal_tests.exe` | **17 checks, 0 failures** |
+| Runtime registry | `./build/native/codecore_runtime_tests.exe` | **39 checks, 0 failures** |
+| CTest | `ctest --test-dir build/native` | **8/8 passed** |
+
+Total native checks on Windows: **4,451, 0 failures**.
+
+Not in 0.6: package manager, language-server process management and semantic
+intelligence independent of LSP. Those remain open in UPDATED_PLAN.md. Editor
+widgets and rendering were explicitly excluded from this release.

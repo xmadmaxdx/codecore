@@ -5,9 +5,29 @@ ABI, plus Dart FFI and Kotlin/JNI integration layers. It is designed to power
 editors inside Flutter and Android applications without shipping a compiler or
 requiring a cloud account.
 
-**Current release: CodeCore Core v0.5.0.** The C ABI is version `6`; the Dart
-package is `codecore 0.5.0`. These version numbers move independently of the
+**Current release: CodeCore Core v0.6.0.** The C ABI is version `7`; the Dart
+package is `codecore 0.6.0`. These version numbers move independently of the
 editor-widget milestone, which does not exist yet.
+
+## What changed in 0.6
+
+- Incremental tokenization: an edited document re-lexes from the edited line to
+  the first point where the lexical state matches the previous revision, then
+  reuses the untouched tail with shifted offsets. Multi-line strings, block
+  comments and CSS brace depth are handled; markup languages still take the
+  full-lex path. Editing one line of a 16,000-line file lexes 27 bytes.
+- Interactive terminal sessions (`core/term`): a real pseudo-terminal on POSIX
+  and Android through `posix_openpt`, with `TIOCSWINSZ` resize, streaming
+  output, bounded backlog and process-group cleanup. Windows uses piped
+  `cmd.exe` and reports `usesPty() == false`; ConPTY is not shipped because the
+  pseudoconsole detached stdin on every Windows 11 machine tested.
+- Runtime registry (`core/runtime`): 22 language runtimes discovered through
+  PATH, version probing, and one `plan`/`run` API that builds the compile and
+  run commands for every language. Compiled languages run their compiler first
+  and only start the program when it succeeds. No runtime or compiler is
+  bundled, and Microsoft Store execution aliases are skipped.
+- Both features are exposed through the C ABI (`cc_terminal_*`, `cc_runtime_*`)
+  so any host language can bind them.
 
 ## What changed in 0.5
 
@@ -63,6 +83,9 @@ Implemented and tested:
 | 40 language definitions and lexical tokens | Implemented, tested; eight languages also have bundled structural grammars. Full list: [docs/languages.md](docs/languages.md) |
 | Tree-sitter structural syntax (Python, JavaScript, Java, Go, JSON, C, C++, Rust) | Implemented in the core, C ABI, Dart and Kotlin SDKs; 434 native, 124 Dart and 175 JNI checks, 0 failures |
 | Local process execution (pipes, streaming, timeout, cancel, cwd, env) | Implemented in the core, C ABI, Dart and Kotlin SDKs; 79 native, 115 Dart and 126 JNI checks, 0 failures |
+| Incremental tokenization | Implemented; 426 checks including randomized edits and a 16,000-line relex-scope test |
+| Interactive terminal (PTY) | Implemented in the core and C ABI; 17 checks. POSIX/Android PTY, Windows piped fallback |
+| Runtime registry (discovery, versions, compile + run) | Implemented in the core and C ABI; 39 checks including real Python execution |
 | Keyword / symbol / builtin completion | Implemented, tested |
 | Bracket and unterminated-literal diagnostics | Implemented, tested |
 | Brace and block-comment folding | Implemented, tested |
@@ -77,8 +100,6 @@ Implemented and tested:
 
 Not implemented yet — see [docs/status.md](docs/status.md):
 
-- Incremental tokenization; analysis is cached per version and offloaded to a
-  worker, but an edited document is still re-lexed from the start.
 - Structural grammars beyond the eight compiled-in languages; there is no
   runtime grammar loader or downloadable grammar pack yet.
 - Language-server process/socket managers and bundled servers (hosts own the
@@ -86,7 +107,9 @@ Not implemented yet — see [docs/status.md](docs/status.md):
 - Semantic intelligence independent of LSP.
 - AI model providers, agent orchestration, chat or multi-file workflows.
 - Flutter editor widgets and Kotlin/Compose views (the UI is a separate layer).
-- Runtime registry, bundled runtimes, PTY/terminal and package manager.
+- Package manager, language-server process management and semantic
+  intelligence independent of LSP.
+- Bundled runtimes. The runtime registry only invokes what is installed.
 - Downloads, signing and verification.
 
 ## Repository layout
@@ -95,6 +118,8 @@ Not implemented yet — see [docs/status.md](docs/status.md):
 core/                 C++ engine (buffer, document, analysis, diff, snapshots)
 core/syntax/          Tree-sitter wrapper, incremental reparse and highlights
 core/exec/            Child processes, pipes, streaming, timeout and cancel
+core/term/            Terminal sessions, POSIX PTY and Windows pipe shells
+core/runtime/         Runtime discovery, version probes, compile/run planning
 core/viewport/        Visible-line geometry and overscan math
 core/lsp/             JSON-RPC codec, LSP framing and client session
 native/include/       Public C ABI header
@@ -162,7 +187,11 @@ version or update `ndkVersion` in `sdk/kotlin/build.gradle.kts`.
 | LSP tests | **59 checks, 0 failures** |
 | Viewport/background tests | **36 checks, 0 failures** |
 | Tree-sitter syntax tests | **434 checks, 0 failures** |
-| CTest | 5/5 passed |
+| Execution tests | **79 checks, 0 failures** |
+| Incremental tokenization tests | **426 checks, 0 failures** |
+| Terminal tests | **17 checks, 0 failures** |
+| Runtime registry tests | **39 checks, 0 failures** |
+| CTest | 8/8 passed |
 | Dart static analysis | No issues |
 | Dart FFI smoke test | **124 checks, 0 failures** |
 | JNI smoke test (Java) | **175 checks, 0 failures** |

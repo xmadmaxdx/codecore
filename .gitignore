@@ -52,3 +52,6 @@ Thumbs.db
 
 # Gradle NDK intermediate output
 .cxx/
+
+dist/
+*.zip
