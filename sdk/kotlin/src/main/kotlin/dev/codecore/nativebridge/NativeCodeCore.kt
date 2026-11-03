@@ -188,4 +188,72 @@ object NativeCodeCore {
 
     @JvmStatic
     external fun nativeSetChangeListener(handle: Long, listener: Any?)
+
+    @JvmStatic
+    external fun nativeLspCreate(): Long
+
+    @JvmStatic
+    external fun nativeLspDestroy(handle: Long)
+
+    @JvmStatic
+    external fun nativeLspInitialize(handle: Long, rootUri: String)
+
+    @JvmStatic
+    external fun nativeLspFeed(handle: Long, data: String)
+
+    @JvmStatic
+    external fun nativeLspTakeOutgoing(handle: Long): String?
+
+    @JvmStatic
+    external fun nativeLspTakeResult(handle: Long): Array<String>?
+
+    @JvmStatic
+    external fun nativeLspTakeDiagnostics(handle: Long): Array<String>?
+
+    @JvmStatic
+    external fun nativeLspIsInitialized(handle: Long): Boolean
+
+    @JvmStatic
+    external fun nativeLspServerCapabilities(handle: Long): String
+
+    @JvmStatic
+    external fun nativeLspLastError(handle: Long): String
+
+    @JvmStatic
+    external fun nativeLspDidOpen(
+        handle: Long,
+        uri: String,
+        languageId: String,
+        version: Int,
+        text: String,
+    ): Int
+
+    @JvmStatic
+    external fun nativeLspDidChange(handle: Long, uri: String, version: Int, text: String): Int
+
+    @JvmStatic
+    external fun nativeLspDidClose(handle: Long, uri: String): Int
+
+    @JvmStatic
+    external fun nativeLspDidSave(
+        handle: Long,
+        uri: String,
+        text: String,
+        includeText: Boolean,
+    ): Int
+
+    @JvmStatic
+    external fun nativeLspRequest(handle: Long, method: String, params: String): Long
+
+    @JvmStatic
+    external fun nativeLspNotify(handle: Long, method: String, params: String): Int
+
+    @JvmStatic
+    external fun nativeLspCancel(handle: Long, id: Long)
+
+    @JvmStatic
+    external fun nativeLspShutdown(handle: Long)
+
+    @JvmStatic
+    external fun nativeLspExit(handle: Long)
 }

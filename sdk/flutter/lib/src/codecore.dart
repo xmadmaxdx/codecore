@@ -6,6 +6,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 
+import 'lsp.dart';
 import 'models.dart';
 import 'native_bindings.dart';
 
@@ -122,6 +123,12 @@ class CodeCore {
       throw const CodeCoreException(5, 'document creation failed');
     }
     return CodeCoreDocument._(this, handle);
+  }
+
+  /// Opens an LSP client that shares this process's native library.
+  CodeCoreLsp createLsp() {
+    _ensureAlive();
+    return CodeCoreLsp.open(_bindings.library);
   }
 
   void dispose() {

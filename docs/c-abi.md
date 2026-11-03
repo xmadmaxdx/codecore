@@ -2,7 +2,7 @@
 
 Header: `native/include/codecore/codecore.h`
 
-The ABI is versioned with `cc_abi_version()` (currently `3`) and
+The ABI is versioned with `cc_abi_version()` (currently `4`) and
 `cc_version_string()` (`0.3.0`). ABI version and library version are separate:
 the ABI changes only when the binary contract changes; the library version also
 moves for behavior additions.
@@ -248,16 +248,24 @@ cc_string_free(frame);
 /* when bytes arrive from the server */
 cc_lsp_feed(lsp, bytes, bytes_length);
 
+int64_t result_id = 0;
 char* method = NULL;
 char* payload = NULL;
-if (cc_lsp_take_result(lsp, &method, &payload)) {
-  /* payload is the result JSON */
+uint8_t is_error = 0;
+if (cc_lsp_take_result(lsp, &result_id, &method, &payload, &is_error)) {
+  /* payload is the result JSON; is_error marks an error response */
   cc_string_free(method);
   cc_string_free(payload);
 }
 
 cc_lsp_did_open(lsp, "file:///project/main.py", "python", 1, text, text_length);
 int64_t request = cc_lsp_completion(lsp, "file:///project/main.py", 2, 4);
+/* Also: hover, definition, signature_help, references, document_symbols,
+ * workspace_symbols, rename, formatting, code_action, semantic_tokens. */
+const char* raw_params = "{\"command\":\"codecore.noop\"}";
+int64_t raw = cc_lsp_request(lsp, "workspace/executeCommand",
+                             raw_params, strlen(raw_params));
+cc_lsp_notify(lsp, "$/setTrace", "{\"value\":\"off\"}", 15);
 cc_lsp_cancel(lsp, request);
 cc_lsp_shutdown(lsp);
 cc_lsp_exit(lsp);
@@ -266,7 +274,8 @@ cc_lsp_destroy(lsp);
 
 - Outgoing frames already include `Content-Length` framing.
 - Results and diagnostics are owned JSON strings; free them with
-  `cc_string_free`.
+  `cc_string_free`. Take results/diagnostics in a loop; each call dequeues one.
+- ABI 4 added the result id and error flag to `cc_lsp_take_result`.
 - `cc_lsp_server_capabilities` and `cc_lsp_last_error` are client-owned and stay
   valid until the next `cc_lsp_feed`.
 - Positions are LSP UTF-16 line/character values, not CodeCore byte offsets.

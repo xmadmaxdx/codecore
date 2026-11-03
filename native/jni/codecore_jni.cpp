@@ -35,6 +35,10 @@ cc_snapshot* snapshotFrom(jlong handle) {
   return reinterpret_cast<cc_snapshot*>(static_cast<intptr_t>(handle));
 }
 
+cc_lsp_client* lspFrom(jlong handle) {
+  return reinterpret_cast<cc_lsp_client*>(static_cast<intptr_t>(handle));
+}
+
 struct JniListener {
   JavaVM* vm = nullptr;
   jobject target = nullptr;
@@ -757,6 +761,172 @@ JNIEXPORT jint JNICALL
 Java_dev_codecore_nativebridge_NativeCodeCore_nativeSetLanguage(JNIEnv*, jclass, jlong handle,
                                                                 jint languageId) {
   return static_cast<jint>(cc_document_set_language(documentFrom(handle), languageId));
+}
+
+JNIEXPORT jlong JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspCreate(JNIEnv*, jclass) {
+  return static_cast<jlong>(reinterpret_cast<intptr_t>(cc_lsp_create()));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspDestroy(JNIEnv*, jclass, jlong handle) {
+  cc_lsp_destroy(lspFrom(handle));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspInitialize(JNIEnv* env, jclass,
+                                                                 jlong handle, jstring rootUri) {
+  const std::string root = javaStringToUtf8(env, rootUri);
+  cc_lsp_initialize(lspFrom(handle), root.c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspFeed(JNIEnv* env, jclass, jlong handle,
+                                                            jstring data) {
+  const std::string chunk = javaStringToUtf8(env, data);
+  cc_lsp_feed(lspFrom(handle), chunk.data(), chunk.size());
+}
+
+JNIEXPORT jstring JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspTakeOutgoing(JNIEnv* env, jclass,
+                                                                    jlong handle) {
+  size_t length = 0;
+  char* frame = cc_lsp_take_outgoing(lspFrom(handle), &length);
+  if (!frame) {
+    return nullptr;
+  }
+  jstring result = toJavaString(env, std::string(frame, length));
+  cc_string_free(frame);
+  return result;
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspTakeResult(JNIEnv* env, jclass,
+                                                                  jlong handle) {
+  int64_t id = 0;
+  char* method = nullptr;
+  char* payload = nullptr;
+  uint8_t isError = 0;
+  if (!cc_lsp_take_result(lspFrom(handle), &id, &method, &payload, &isError)) {
+    return nullptr;
+  }
+  std::vector<std::string> fields;
+  fields.push_back(std::to_string(id));
+  fields.push_back(method ? method : "");
+  fields.push_back(payload ? payload : "");
+  fields.push_back(isError ? "1" : "0");
+  cc_string_free(method);
+  cc_string_free(payload);
+  return stringArray(env, fields);
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspTakeDiagnostics(JNIEnv* env, jclass,
+                                                                       jlong handle) {
+  char* uri = nullptr;
+  char* payload = nullptr;
+  if (!cc_lsp_take_diagnostics(lspFrom(handle), &uri, &payload)) {
+    return nullptr;
+  }
+  std::vector<std::string> fields;
+  fields.push_back(uri ? uri : "");
+  fields.push_back(payload ? payload : "");
+  cc_string_free(uri);
+  cc_string_free(payload);
+  return stringArray(env, fields);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspIsInitialized(JNIEnv*, jclass,
+                                                                     jlong handle) {
+  return cc_lsp_is_initialized(lspFrom(handle)) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jstring JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspServerCapabilities(JNIEnv* env, jclass,
+                                                                          jlong handle) {
+  return toJavaString(env, cc_lsp_server_capabilities(lspFrom(handle)));
+}
+
+JNIEXPORT jstring JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspLastError(JNIEnv* env, jclass,
+                                                                 jlong handle) {
+  return toJavaString(env, cc_lsp_last_error(lspFrom(handle)));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspDidOpen(
+    JNIEnv* env, jclass, jlong handle, jstring uri, jstring languageId, jint version,
+    jstring text) {
+  const std::string uriValue = javaStringToUtf8(env, uri);
+  const std::string language = javaStringToUtf8(env, languageId);
+  const std::string source = javaStringToUtf8(env, text);
+  return static_cast<jint>(cc_lsp_did_open(lspFrom(handle), uriValue.c_str(),
+                                           language.c_str(), version, source.data(),
+                                           source.size()));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspDidChange(JNIEnv* env, jclass,
+                                                                 jlong handle, jstring uri,
+                                                                 jint version,
+                                                                 jstring text) {
+  const std::string uriValue = javaStringToUtf8(env, uri);
+  const std::string source = javaStringToUtf8(env, text);
+  return static_cast<jint>(cc_lsp_did_change(lspFrom(handle), uriValue.c_str(), version,
+                                             source.data(), source.size()));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspDidClose(JNIEnv* env, jclass,
+                                                                jlong handle, jstring uri) {
+  const std::string uriValue = javaStringToUtf8(env, uri);
+  return static_cast<jint>(cc_lsp_did_close(lspFrom(handle), uriValue.c_str()));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspDidSave(
+    JNIEnv* env, jclass, jlong handle, jstring uri, jstring text, jboolean includeText) {
+  const std::string uriValue = javaStringToUtf8(env, uri);
+  const std::string source = javaStringToUtf8(env, text);
+  return static_cast<jint>(cc_lsp_did_save(lspFrom(handle), uriValue.c_str(), source.data(),
+                                           source.size(), includeText ? 1 : 0));
+}
+
+JNIEXPORT jlong JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspRequest(JNIEnv* env, jclass,
+                                                               jlong handle, jstring method,
+                                                               jstring params) {
+  const std::string methodValue = javaStringToUtf8(env, method);
+  const std::string paramsValue = javaStringToUtf8(env, params);
+  return static_cast<jlong>(cc_lsp_request(lspFrom(handle), methodValue.c_str(),
+                                           paramsValue.data(), paramsValue.size()));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspNotify(JNIEnv* env, jclass,
+                                                              jlong handle, jstring method,
+                                                              jstring params) {
+  const std::string methodValue = javaStringToUtf8(env, method);
+  const std::string paramsValue = javaStringToUtf8(env, params);
+  return static_cast<jint>(cc_lsp_notify(lspFrom(handle), methodValue.c_str(),
+                                         paramsValue.data(), paramsValue.size()));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspCancel(JNIEnv*, jclass, jlong handle,
+                                                              jlong id) {
+  cc_lsp_cancel(lspFrom(handle), id);
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspShutdown(JNIEnv*, jclass, jlong handle) {
+  cc_lsp_shutdown(lspFrom(handle));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeLspExit(JNIEnv*, jclass, jlong handle) {
+  cc_lsp_exit(lspFrom(handle));
 }
 
 JNIEXPORT void JNICALL

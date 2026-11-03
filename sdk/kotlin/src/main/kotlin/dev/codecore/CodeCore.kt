@@ -23,4 +23,7 @@ object CodeCore {
         }
         return CodeCoreDocument(handle)
     }
+
+    /** Opens an LSP client. The host owns the language-server transport. */
+    fun createLsp(): CodeCoreLsp = CodeCoreLsp.open()
 }

@@ -175,10 +175,13 @@ lock, but do not make tokenization incremental.
 - `protocol` — `Content-Length` framing and request/notification/response
   classification, with incremental parsing of partial input.
 - `client` — the LSP lifecycle: `initialize`/`initialized`, full-text
-  `didOpen`/`didChange`/`didClose`, completion, hover, definition, cancellation,
-  `shutdown`/`exit`, completion-result delivery and `publishDiagnostics`
-  capture. Server requests such as `workspace/configuration` receive minimal
-  valid replies so a server does not stall.
+  `didOpen`/`didChange`/`didClose`/`didSave`, completion, hover, definition,
+  signature help, references, document/workspace symbols, rename, formatting,
+  code actions, semantic tokens, cancellation, `shutdown`/`exit`, result
+  delivery and `publishDiagnostics` capture. Generic JSON requests and
+  notifications are supported. Server requests such as
+  `workspace/configuration` receive minimal valid replies so a server does not
+  stall.
 
 The client is transport-agnostic. It queues outgoing frames and accepts incoming
 bytes; the host owns the process, pipe or socket. This keeps the engine usable on
@@ -195,7 +198,7 @@ not a replacement for the CodeCore document model or completion engine.
 - Returned arrays and strings are allocated through `cc_alloc` and freed with the
   matching `cc_*_free`.
 - C++ types and exceptions never cross the boundary.
-- The ABI is versioned separately from the library. Current: ABI `3`, library
+- The ABI is versioned separately from the library. Current: ABI `4`, library
   `0.3.0`.
 
 ## Threading
@@ -211,12 +214,13 @@ not a replacement for the CodeCore document model or completion engine.
 
 - **Dart** (`sdk/flutter`): hand-written `dart:ffi`; no package dependencies.
   The package includes an Android Gradle/CMake plugin that builds
-  `libcodecore.so` from the shared sources. Publishing needs the native sources
-  vendored into the package or a prebuilt AAR.
+  `libcodecore.so` from the shared sources. `CodeCoreLsp` pumps LSP frames
+  without a bundled transport. Publishing needs the native sources vendored
+  into the package or a prebuilt AAR.
 - **Kotlin** (`sdk/kotlin`): JNI bridge with explicit UTF-8/UTF-16 conversion.
   The Gradle wrapper and NDK version are included. `:assembleDebug` compiles the
-  Kotlin SDK and native sources into a debug AAR; the JNI surface is also
-  smoke-tested through a Java harness with identical symbols.
+  Kotlin SDK and native sources into a debug AAR. `CodeCoreLsp` exposes the same
+  protocol surface; the JNI bridge is smoke-tested through a Java harness.
 
 ## Why these choices
 

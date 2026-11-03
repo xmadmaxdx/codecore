@@ -68,7 +68,7 @@ extern "C" {
 #define CODECORE_VERSION_MAJOR 0
 #define CODECORE_VERSION_MINOR 3
 #define CODECORE_VERSION_PATCH 0
-#define CODECORE_ABI_VERSION 3u
+#define CODECORE_ABI_VERSION 4u
 
 #if defined(_WIN32) && defined(CODECORE_BUILD_SHARED)
 #define CC_API __declspec(dllexport)
@@ -425,8 +425,8 @@ CC_API void cc_lsp_destroy(cc_lsp_client* client);
 CC_API void cc_lsp_initialize(cc_lsp_client* client, const char* root_uri);
 CC_API void cc_lsp_feed(cc_lsp_client* client, const char* data, size_t length);
 CC_API char* cc_lsp_take_outgoing(cc_lsp_client* client, size_t* out_length);
-CC_API uint8_t cc_lsp_take_result(cc_lsp_client* client, char** out_method,
-                                  char** out_payload);
+CC_API uint8_t cc_lsp_take_result(cc_lsp_client* client, int64_t* out_id, char** out_method,
+                                  char** out_payload, uint8_t* out_is_error);
 CC_API uint8_t cc_lsp_take_diagnostics(cc_lsp_client* client, char** out_uri,
                                        char** out_payload);
 CC_API uint8_t cc_lsp_is_initialized(const cc_lsp_client* client);
@@ -437,12 +437,34 @@ CC_API cc_status cc_lsp_did_open(cc_lsp_client* client, const char* uri,
 CC_API cc_status cc_lsp_did_change(cc_lsp_client* client, const char* uri, int32_t version,
                                    const char* text, size_t text_length);
 CC_API cc_status cc_lsp_did_close(cc_lsp_client* client, const char* uri);
+CC_API cc_status cc_lsp_did_save(cc_lsp_client* client, const char* uri, const char* text,
+                                 size_t text_length, uint8_t include_text);
 CC_API int64_t cc_lsp_completion(cc_lsp_client* client, const char* uri, uint32_t line,
                                  uint32_t character);
 CC_API int64_t cc_lsp_hover(cc_lsp_client* client, const char* uri, uint32_t line,
                             uint32_t character);
 CC_API int64_t cc_lsp_definition(cc_lsp_client* client, const char* uri, uint32_t line,
                                  uint32_t character);
+CC_API int64_t cc_lsp_signature_help(cc_lsp_client* client, const char* uri, uint32_t line,
+                                     uint32_t character);
+CC_API int64_t cc_lsp_references(cc_lsp_client* client, const char* uri, uint32_t line,
+                                 uint32_t character, uint8_t include_declaration);
+CC_API int64_t cc_lsp_document_symbols(cc_lsp_client* client, const char* uri);
+CC_API int64_t cc_lsp_workspace_symbols(cc_lsp_client* client, const char* query);
+CC_API int64_t cc_lsp_rename(cc_lsp_client* client, const char* uri, uint32_t line,
+                             uint32_t character, const char* new_name);
+CC_API int64_t cc_lsp_formatting(cc_lsp_client* client, const char* uri, uint32_t tab_size,
+                                 uint8_t insert_spaces);
+CC_API int64_t cc_lsp_code_action(cc_lsp_client* client, const char* uri, uint32_t start_line,
+                                  uint32_t start_character, uint32_t end_line,
+                                  uint32_t end_character);
+CC_API int64_t cc_lsp_semantic_tokens(cc_lsp_client* client, const char* uri);
+/* Generic request. params_json must contain a JSON value; returns the request id. */
+CC_API int64_t cc_lsp_request(cc_lsp_client* client, const char* method,
+                              const char* params_json, size_t params_length);
+/* Generic notification. params_json must contain a JSON value. */
+CC_API cc_status cc_lsp_notify(cc_lsp_client* client, const char* method,
+                               const char* params_json, size_t params_length);
 CC_API void cc_lsp_cancel(cc_lsp_client* client, int64_t id);
 CC_API void cc_lsp_shutdown(cc_lsp_client* client);
 CC_API void cc_lsp_exit(cc_lsp_client* client);

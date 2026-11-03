@@ -19,7 +19,11 @@ add_library(codecore_jni SHARED
   "${CODECORE_ROOT}/core/diff/diff.cpp"
   "${CODECORE_ROOT}/core/snapshot/snapshot.cpp"
   "${CODECORE_ROOT}/core/engine/engine.cpp"
+  "${CODECORE_ROOT}/core/lsp/json.cpp"
+  "${CODECORE_ROOT}/core/lsp/protocol.cpp"
+  "${CODECORE_ROOT}/core/lsp/client.cpp"
   "${CODECORE_ROOT}/native/src/codecore_api.cpp"
+  "${CODECORE_ROOT}/native/src/codecore_lsp_api.cpp"
   "${CODECORE_ROOT}/native/jni/codecore_jni.cpp"
 )
 

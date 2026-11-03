@@ -178,6 +178,135 @@ int64_t LspClient::definition(std::string uri, uint32_t line, uint32_t character
   return request("textDocument/definition", positionParams(uri, line, character));
 }
 
+void LspClient::didSave(std::string uri, std::string text, bool includeText) {
+  JsonValue textDocument = object();
+  textDocument.set("uri", JsonValue(std::move(uri)));
+
+  JsonValue params = object();
+  params.set("textDocument", std::move(textDocument));
+  if (includeText) {
+    params.set("text", JsonValue(std::move(text)));
+  }
+
+  JsonValue message = object();
+  message.set("method", JsonValue("textDocument/didSave"));
+  message.set("params", std::move(params));
+  enqueue(std::move(message));
+}
+
+int64_t LspClient::signatureHelp(std::string uri, uint32_t line, uint32_t character) {
+  return request("textDocument/signatureHelp", positionParams(uri, line, character));
+}
+
+int64_t LspClient::references(std::string uri, uint32_t line, uint32_t character,
+                             bool includeDeclaration) {
+  JsonValue params = positionParams(uri, line, character);
+  JsonValue context = object();
+  context.set("includeDeclaration", JsonValue(includeDeclaration));
+  params.set("context", std::move(context));
+  return request("textDocument/references", std::move(params));
+}
+
+int64_t LspClient::documentSymbols(std::string uri) {
+  JsonValue textDocument = object();
+  textDocument.set("uri", JsonValue(std::move(uri)));
+  JsonValue params = object();
+  params.set("textDocument", std::move(textDocument));
+  return request("textDocument/documentSymbol", std::move(params));
+}
+
+int64_t LspClient::workspaceSymbols(std::string query) {
+  JsonValue params = object();
+  params.set("query", JsonValue(std::move(query)));
+  return request("workspace/symbol", std::move(params));
+}
+
+int64_t LspClient::rename(std::string uri, uint32_t line, uint32_t character,
+                          std::string newName) {
+  JsonValue params = positionParams(uri, line, character);
+  params.set("newName", JsonValue(std::move(newName)));
+  return request("textDocument/rename", std::move(params));
+}
+
+int64_t LspClient::formatting(std::string uri, uint32_t tabSize, bool insertSpaces) {
+  JsonValue textDocument = object();
+  textDocument.set("uri", JsonValue(std::move(uri)));
+  JsonValue options = object();
+  options.set("tabSize", JsonValue(static_cast<int>(tabSize)));
+  options.set("insertSpaces", JsonValue(insertSpaces));
+  JsonValue params = object();
+  params.set("textDocument", std::move(textDocument));
+  params.set("options", std::move(options));
+  return request("textDocument/formatting", std::move(params));
+}
+
+int64_t LspClient::codeAction(std::string uri, uint32_t startLine,
+                              uint32_t startCharacter, uint32_t endLine,
+                              uint32_t endCharacter) {
+  JsonValue textDocument = object();
+  textDocument.set("uri", JsonValue(std::move(uri)));
+  JsonValue start = object();
+  start.set("line", JsonValue(static_cast<int>(startLine)));
+  start.set("character", JsonValue(static_cast<int>(startCharacter)));
+  JsonValue end = object();
+  end.set("line", JsonValue(static_cast<int>(endLine)));
+  end.set("character", JsonValue(static_cast<int>(endCharacter)));
+  JsonValue range = object();
+  range.set("start", std::move(start));
+  range.set("end", std::move(end));
+  JsonValue context = object();
+  context.set("diagnostics", JsonValue::makeArray());
+  JsonValue params = object();
+  params.set("textDocument", std::move(textDocument));
+  params.set("range", std::move(range));
+  params.set("context", std::move(context));
+  return request("textDocument/codeAction", std::move(params));
+}
+
+int64_t LspClient::semanticTokens(std::string uri) {
+  JsonValue textDocument = object();
+  textDocument.set("uri", JsonValue(std::move(uri)));
+  JsonValue params = object();
+  params.set("textDocument", std::move(textDocument));
+  return request("textDocument/semanticTokens/full", std::move(params));
+}
+
+int64_t LspClient::requestJson(std::string method, std::string_view paramsJson,
+                               std::string* error) {
+  if (error) {
+    error->clear();
+  }
+  JsonValue params;
+  std::string parseError;
+  if (!JsonValue::parse(paramsJson, &params, &parseError)) {
+    if (error) {
+      *error = parseError;
+    }
+    return -1;
+  }
+  return request(std::move(method), std::move(params));
+}
+
+bool LspClient::notifyJson(std::string method, std::string_view paramsJson,
+                           std::string* error) {
+  if (error) {
+    error->clear();
+  }
+  JsonValue params;
+  std::string parseError;
+  if (!JsonValue::parse(paramsJson, &params, &parseError)) {
+    if (error) {
+      *error = parseError;
+    }
+    return false;
+  }
+  JsonValue message = object();
+  message.set("method", JsonValue(std::move(method)));
+  message.set("params", std::move(params));
+  enqueue(std::move(message));
+  return true;
+}
+
 void LspClient::cancel(int64_t id) {
   JsonValue params = object();
   params.set("id", JsonValue(static_cast<int>(id)));
@@ -237,7 +366,7 @@ void LspClient::handleResponse(const LspMessage& message) {
   results_.push_back(std::move(result));
   pending_.erase(found);
 
-  if (id == initializeId_ && !initialized_) {
+  if (id == initializeId_ && !initialized_ && !message.isError) {
     initialized_ = true;
     const JsonValue* capabilities = message.result.find("capabilities");
     capabilitiesJson_ = capabilities ? capabilities->dump() : "{}";

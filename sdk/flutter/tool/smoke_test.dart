@@ -32,7 +32,7 @@ void main() {
   try {
     core = CodeCore.open();
     check(core.version == '0.3.0', 'native version is 0.3.0');
-    check(core.abiVersion == 3, 'C ABI version is 3');
+    check(core.abiVersion == 4, 'C ABI version is 4');
     check(core.languageCount == 23, 'language registry has 23 languages');
     check(
       core.languages.any((language) => language.idString == 'python'),
@@ -220,6 +220,39 @@ void main() {
     check(lastEvent?.origin == EditOrigin.host, 'default origin is host');
     document.onChange = null;
     document.dispose();
+
+    final lsp = core.createLsp();
+    lsp.initialize('file:///project');
+    final initializeFrame = lsp.takeOutgoing();
+    check(
+      initializeFrame != null && initializeFrame.contains('initialize'),
+      'LSP initialize frame',
+    );
+    const capabilitiesBody = '{"jsonrpc":"2.0","id":1,"result":'
+        '{"capabilities":{"hoverProvider":true}}}';
+    lsp.feed(
+      'Content-Length: ${capabilitiesBody.length}\r\n\r\n$capabilitiesBody',
+    );
+    check(lsp.isInitialized, 'LSP initialized after response');
+    check(
+      lsp.serverCapabilities.contains('hoverProvider'),
+      'LSP server capabilities',
+    );
+    lsp.didOpen('file:///project/main.py', 'python', 1, 'print(1)\n');
+    String? didOpenFrame;
+    for (var attempt = 0; attempt < 4; attempt += 1) {
+      didOpenFrame = lsp.takeOutgoing();
+      if (didOpenFrame != null &&
+          didOpenFrame.contains('textDocument/didOpen')) {
+        break;
+      }
+    }
+    check(
+      didOpenFrame != null &&
+          didOpenFrame.contains('textDocument/didOpen'),
+      'LSP didOpen frame',
+    );
+    lsp.dispose();
 
     check(core.languages.every((language) => language.supportsSyntax), 'all languages expose syntax');
     check(core.languages.every((language) => language.supportsCompletion), 'all languages expose completion');

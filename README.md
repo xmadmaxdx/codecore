@@ -5,7 +5,7 @@ ABI, plus Dart FFI and Kotlin/JNI integration layers. It is designed to power
 editors inside Flutter and Android applications without shipping a compiler or
 requiring a cloud account.
 
-**Current release: CodeCore Core v0.3.0.** The C ABI is version `3`; the Dart
+**Current release: CodeCore Core v0.3.0.** The C ABI is version `4`; the Dart
 package is `codecore 0.3.0`. These version numbers move independently of the
 editor-widget milestone, which does not exist yet.
 
@@ -22,6 +22,9 @@ editor-widget milestone, which does not exist yet.
   multi-erase as single undo steps.
 - A Flutter Android plugin that builds and packages `libcodecore.so`; manual
   `jniLibs` copying is no longer required in this repository.
+- Dart (`CodeCoreLsp`) and Kotlin (`CodeCoreLsp`) LSP clients with transport
+  pumping, lifecycle, full-text sync, completion, hover, definition,
+  references, symbols, rename, formatting, code actions and diagnostics.
 
 ## Status
 
@@ -36,7 +39,7 @@ Implemented and tested:
 | Undo / redo, typing coalescing, edit origins | Implemented, tested |
 | Selection, cursor movement, bracket matching | Implemented, tested |
 | Multi-cursor editing and atomic grouped edits | Implemented; compile-verified |
-| LSP client (JSON-RPC framing, lifecycle, sync, completion/hover/definition, diagnostics) | Implemented; compile-verified through the C ABI |
+| LSP client (framing, lifecycle, sync, completion, hover, definition, references, symbols, rename, formatting, code actions, diagnostics) | Implemented across the C ABI, Dart and Kotlin; compile-verified |
 | 23 language definitions and lexical tokens | Implemented, tested |
 | Keyword / symbol / builtin completion | Implemented, tested |
 | Bracket and unterminated-literal diagnostics | Implemented, tested |
@@ -47,14 +50,15 @@ Implemented and tested:
 | Proposed changes, bounded line diff, atomic accept/reject | Implemented, tested |
 | Ghost-text state, partial acceptance, dismissal | Implemented, tested |
 | Dart FFI SDK | Implemented, tested |
-| Kotlin JNI bridge | Compiled and exercised through a Java harness |
+| Kotlin JNI bridge | Compiled; Java harness covers the document surface and LSP lifecycle |
 | Flutter Android plugin build | Added; builds the same native sources; not built inside a Flutter app here |
 
 Not implemented yet — see [docs/status.md](docs/status.md):
 
 - Tree-sitter grammars and incremental syntax trees.
-- Dart/Kotlin LSP transport bindings (the shared C ABI client is available).
-- Semantic intelligence, rename, formatting and code actions.
+- Language-server process/socket managers and bundled servers (hosts own the
+  transport; CodeCore ships the protocol client only).
+- Semantic intelligence independent of LSP.
 - AI model providers, agent orchestration, chat or multi-file workflows.
 - Flutter editor widgets and Kotlin/Compose views (the UI is a separate layer).
 - Package manager, downloads, signing and verification.
@@ -169,6 +173,26 @@ doc.acceptProposal();       // one atomic, undoable edit
 
 doc.showGhostText(doc.length, '\nprint(total(1, 2))');
 doc.acceptGhostText();      // never inserted before acceptance
+```
+
+LSP example (the host owns the server process or socket):
+
+```dart
+final lsp = core.createLsp();
+lsp.initialize('file:///project');
+while (true) {
+  final frame = lsp.takeOutgoing();
+  if (frame == null) break;
+  server.write(frame); // your pipe/socket
+}
+lsp.didOpen('file:///project/main.py', 'python', 1, doc.text);
+final requestId = lsp.completion('file:///project/main.py', 2, 4);
+
+while (true) {
+  final result = lsp.takeResult();
+  if (result == null) break;
+  print('${result.method}: ${result.payload}');
+}
 ```
 
 On Android, use the package as a local/path Flutter dependency. Its plugin

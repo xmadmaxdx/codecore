@@ -130,4 +130,44 @@ public final class NativeCodeCore {
     public static native int nativeSetLanguage(long handle, int languageId);
 
     public static native void nativeSetChangeListener(long handle, Object listener);
+
+    public static native long nativeLspCreate();
+
+    public static native void nativeLspDestroy(long handle);
+
+    public static native void nativeLspInitialize(long handle, String rootUri);
+
+    public static native void nativeLspFeed(long handle, String data);
+
+    public static native String nativeLspTakeOutgoing(long handle);
+
+    public static native String[] nativeLspTakeResult(long handle);
+
+    public static native String[] nativeLspTakeDiagnostics(long handle);
+
+    public static native boolean nativeLspIsInitialized(long handle);
+
+    public static native String nativeLspServerCapabilities(long handle);
+
+    public static native String nativeLspLastError(long handle);
+
+    public static native int nativeLspDidOpen(
+            long handle, String uri, String languageId, int version, String text);
+
+    public static native int nativeLspDidChange(long handle, String uri, int version, String text);
+
+    public static native int nativeLspDidClose(long handle, String uri);
+
+    public static native int nativeLspDidSave(
+            long handle, String uri, String text, boolean includeText);
+
+    public static native long nativeLspRequest(long handle, String method, String params);
+
+    public static native int nativeLspNotify(long handle, String method, String params);
+
+    public static native void nativeLspCancel(long handle, long id);
+
+    public static native void nativeLspShutdown(long handle);
+
+    public static native void nativeLspExit(long handle);
 }

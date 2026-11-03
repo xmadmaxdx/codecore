@@ -49,10 +49,23 @@ class LspClient {
   void didOpen(std::string uri, std::string languageId, int32_t version, std::string text);
   void didChange(std::string uri, int32_t version, std::string text);
   void didClose(std::string uri);
+  void didSave(std::string uri, std::string text, bool includeText);
 
   int64_t completion(std::string uri, uint32_t line, uint32_t character);
   int64_t hover(std::string uri, uint32_t line, uint32_t character);
   int64_t definition(std::string uri, uint32_t line, uint32_t character);
+  int64_t signatureHelp(std::string uri, uint32_t line, uint32_t character);
+  int64_t references(std::string uri, uint32_t line, uint32_t character,
+                     bool includeDeclaration);
+  int64_t documentSymbols(std::string uri);
+  int64_t workspaceSymbols(std::string query);
+  int64_t rename(std::string uri, uint32_t line, uint32_t character, std::string newName);
+  int64_t formatting(std::string uri, uint32_t tabSize, bool insertSpaces);
+  int64_t codeAction(std::string uri, uint32_t startLine, uint32_t startCharacter,
+                     uint32_t endLine, uint32_t endCharacter);
+  int64_t semanticTokens(std::string uri);
+  int64_t requestJson(std::string method, std::string_view paramsJson, std::string* error);
+  bool notifyJson(std::string method, std::string_view paramsJson, std::string* error);
   void cancel(int64_t id);
 
   void receive(std::string_view bytes);

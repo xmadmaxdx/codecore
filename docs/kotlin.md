@@ -123,7 +123,11 @@ closed.
 
 ## API surface
 
-- `CodeCore.version`, `CodeCore.createDocument`
+- `CodeCore.version`, `CodeCore.createDocument`, `CodeCore.createLsp`
+- `CodeCoreLsp`: `initialize`, `feed`, `takeOutgoing`, `takeResult`,
+  `takeDiagnostics`, `isInitialized`, `serverCapabilities`, `lastError`,
+  `didOpen`, `didChange`, `didClose`, `didSave`, `request`, `notify`, `cancel`,
+  `shutdown`, `exit`, `close`
 - `CodeCoreDocument`: `text`, `length`, `version`, `lineCount`, `languageId`
   (read/write), `readOnly`, `editable`, `editOrigin`, `selection`, `canUndo`,
   `canRedo`
@@ -144,10 +148,44 @@ closed.
 
 ## LSP
 
-The shared core exposes an LSP client through the C ABI. Kotlin transport
-bindings are not implemented yet; the planned adapter will pump frames through
-an Android-friendly transport instead of spawning a server binary. Document sync
-is full-text and positions are UTF-16 coordinates.
+`CodeCore.createLsp()` returns a `CodeCoreLsp`. The host owns the language
+server's transport; the client handles framing, request ids, lifecycle, sync
+and diagnostics.
+
+```kotlin
+val lsp = CodeCore.createLsp()
+lsp.initialize("file:///project")
+
+while (true) {
+    val frame = lsp.takeOutgoing() ?: break
+    transport.write(frame)
+}
+
+lsp.feed(transport.read())
+lsp.didOpen("file:///project/main.py", "python", 1, document.text)
+val requestId = lsp.completion("file:///project/main.py", 2, 4)
+
+while (true) {
+    val result = lsp.takeResult() ?: break
+    println("${result.method}: ${result.payload} error=${result.isError}")
+}
+while (true) {
+    val report = lsp.takeDiagnostics() ?: break
+    println("${report.uri}: ${report.payload}")
+}
+
+lsp.close()
+```
+
+Convenience methods cover `completion`, `hover`, `definition`, `signatureHelp`,
+`references`, `documentSymbols`, `workspaceSymbols`, `rename`, `formatting`,
+`codeAction` and `semanticTokens`. Any other method goes through `request(method,
+paramsJson)` or `notify(method, paramsJson)`. `cancel`, `shutdown` and `exit`
+are provided. Results are raw JSON and `LspResult.isError` marks error replies.
+
+- Positions are LSP UTF-16 coordinates, not CodeCore byte offsets.
+- Sync is full-text; no language server is bundled.
+- The JNI bridge is built into `libcodecore_jni.so` with the LSP core.
 
 ## Limitations
 

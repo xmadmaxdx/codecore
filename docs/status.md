@@ -5,7 +5,7 @@ Release identifiers:
 | Identifier | Value |
 |---|---|
 | Core library version | `0.3.0` (`cc_version_string`) |
-| C ABI version | `3` (`cc_abi_version`) |
+| C ABI version | `4` (`cc_abi_version`) |
 | Dart package | `codecore 0.3.0` |
 | Kotlin module | `dev.codecore` 0.3.0 sources |
 | Gradle wrapper | 9.3.1 |
@@ -26,7 +26,7 @@ covered by the verification below; it does not imply production hardening.
 | Undo/redo | Inverse records, typing coalescing, history limits, edit origins |
 | Selection/cursor | Get/set selection, left/right/word/line/up/down/doc moves |
 | Multi-cursor | Add/clear/query cursors, move all carets, atomic multi-insert and multi-erase with one undo entry |
-| LSP | JSON-RPC 2.0 plus Content-Length framing, initialize handshake, full-text sync, completion/hover/definition requests, publishDiagnostics capture, server request replies |
+| LSP | JSON-RPC 2.0 plus Content-Length framing, initialize handshake, full-text sync, completion, hover, definition, signature help, references, document/workspace symbols, rename, formatting, code actions, semantic tokens, cancellation, publishDiagnostics and server request replies. C ABI, Dart and Kotlin surfaces are implemented and build-verified. |
 | Brackets | Matching bracket lookup, bracket-aware diagnostics |
 | Languages | 23 language definitions with comments, strings, keywords, types, builtins |
 | Syntax | Lexical tokens for comments, strings, numbers, keywords, tags, attributes, CSS properties |
@@ -40,9 +40,9 @@ covered by the verification below; it does not imply production hardening.
 | Edit origins | User, AI, host, formatter, external tool; stored in history and emitted in events |
 | Change events | Versioned set/insert/erase/replace/undo/redo/proposal/snapshot/ghost events with origin |
 | C ABI | Opaque handles, explicit ownership, allocation/free functions, language metadata |
-| Dart SDK | FFI loader, documents, editing, tokens, completion, diagnostics, folding, find, proposals, ghost text, snapshots, change listener |
+| Dart SDK | FFI loader, documents, editing, tokens, completion, diagnostics, folding, find, proposals, ghost text, snapshots, change listener, LSP client |
 | JNI bridge | Compiled; Java harness covers the Kotlin-visible surface |
-| Kotlin SDK | Sources include selection, cursor, language switching, change listeners, proposals, ghost text and snapshots |
+| Kotlin SDK | Selection, cursor, multi-cursor, language switching, change listeners, proposals, ghost text, snapshots and an LSP client |
 
 ## Verification performed
 
@@ -66,6 +66,7 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 | Kotlin Gradle build | `gradlew.bat :assembleDebug` | **BUILD SUCCESSFUL**; Kotlin and Android/JNI sources compiled, debug AAR produced |
 | Multi-cursor runtime tests | Not executable | Windows Device Guard blocks newly built EXE/DLL launches (error 4551); native, Dart and Kotlin builds still succeed |
 | LSP build | `cmake --build build/native --target codecore_lsp_tests` | Compiled; execution blocked by Device Guard |
+| LSP SDK surface | `dart analyze`, `gradlew.bat :assembleDebug` | Clean / BUILD SUCCESSFUL |
 | Flutter Android plugin | Not built on this machine | Plugin sources and CMake build are present |
 | Benchmark | `build/native/codecore_benchmark.exe` | Results recorded below; no target claimed |
 
@@ -82,9 +83,8 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 Do not treat any of these as available:
 
 - Tree-sitter parsing, grammars and syntax queries.
-- Dart/Kotlin LSP transport bindings and a language-server process manager.
-- Semantic completion beyond LSP, references, rename, formatting and code
-  actions.
+- Language-server process, pipe and socket managers; no server is bundled.
+- Semantic intelligence independent of LSP.
 - AI model providers, prompt orchestration, agent loops, chat, multi-file edits.
 - Flutter editor widgets and Kotlin/Compose views.
 - Editor rendering, gutter, minimap, tabs, themes (UI layer).
@@ -111,24 +111,21 @@ Do not treat any of these as available:
    clone, but they are not structural sharing.
 5. **Proposal diffs are bounded.** The LCS table is capped; very large inputs
    fall back to a correct but coarse delete-all/insert-all diff.
-6. **Single selection.** One anchor/focus pair; multiple cursors are not
-   implemented.
-7. **No async API.** Language services are synchronous. Hosts must schedule them
+6. **No async API.** Language services are synchronous. Hosts must schedule them
    away from the UI thread for large files.
-8. **JNI offsets are `Int`.** Documents over 2 GB cannot be addressed through
+7. **JNI offsets are `Int`.** Documents over 2 GB cannot be addressed through
    the Kotlin bridge; the default engine limit is 64 MB.
-9. **Dart callbacks are isolate-local.** Change notifications must be used from
+8. **Dart callbacks are isolate-local.** Change notifications must be used from
    the isolate that owns the document.
-10. **No UI.** There is no Flutter widget, Compose view, gutter, theme or
-    renderer in this release.
-11. **Regex search is host-controlled.** Patterns use C++ ECMAScript semantics,
+9. **No UI.** There is no Flutter widget, Compose view, gutter, theme or
+   renderer in this release.
+10. **Regex search is host-controlled.** Patterns use C++ ECMAScript semantics,
     are capped at 10,000 ranges and are not protected against pathological
     backtracking. Validate or constrain patterns in trusted code.
-12. **LSP is transport-only.** The shared client handles protocol framing,
-    lifecycle and requests, but the host owns the process/socket. Document sync
-    is full-text, positions use UTF-16 coordinates, frames are capped at 16 MB
-    and no language server is bundled. Dart/Kotlin transport bindings are not
-    implemented yet.
+11. **LSP is transport-only.** The C ABI, Dart and Kotlin clients handle
+    protocol framing, lifecycle, requests and diagnostics, but the host owns
+    the process/socket. Document sync is full-text, positions use UTF-16
+    coordinates, frames are capped at 16 MB and no language server is bundled.
 
 ## Performance snapshot
 

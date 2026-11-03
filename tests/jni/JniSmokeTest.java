@@ -208,6 +208,33 @@ public final class JniSmokeTest {
 
         NativeCodeCore.nativeDestroy(agent);
 
+        long lsp = NativeCodeCore.nativeLspCreate();
+        check(lsp != 0L, "lsp create");
+        NativeCodeCore.nativeLspInitialize(lsp, "file:///project");
+        String initializeFrame = NativeCodeCore.nativeLspTakeOutgoing(lsp);
+        check(initializeFrame != null && initializeFrame.contains("initialize"),
+                "lsp initialize frame");
+        String capabilitiesBody = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":"
+                + "{\"capabilities\":{\"hoverProvider\":true}}}";
+        NativeCodeCore.nativeLspFeed(lsp,
+                "Content-Length: " + capabilitiesBody.length() + "\r\n\r\n" + capabilitiesBody);
+        check(NativeCodeCore.nativeLspIsInitialized(lsp), "lsp initialized");
+        check(NativeCodeCore.nativeLspServerCapabilities(lsp).contains("hoverProvider"),
+                "lsp server capabilities");
+        check(NativeCodeCore.nativeLspDidOpen(
+                lsp, "file:///project/main.py", "python", 1, "print(1)\n") == 0,
+                "lsp did open");
+        String didOpenFrame = null;
+        for (int attempt = 0; attempt < 4; attempt += 1) {
+            didOpenFrame = NativeCodeCore.nativeLspTakeOutgoing(lsp);
+            if (didOpenFrame != null && didOpenFrame.contains("textDocument/didOpen")) {
+                break;
+            }
+        }
+        check(didOpenFrame != null && didOpenFrame.contains("textDocument/didOpen"),
+                "lsp did open frame");
+        NativeCodeCore.nativeLspDestroy(lsp);
+
         NativeCodeCore.nativeDestroy(document);
         check(true, "destroy does not crash");
 

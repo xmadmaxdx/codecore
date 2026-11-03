@@ -158,11 +158,43 @@ flags on `core.languages` reflect what is implemented.
 
 ## LSP
 
-The shared core now exposes an LSP client through the C ABI: framing, lifecycle,
-full-text sync, completion/hover/definition and diagnostics. The Dart package
-does not wrap it yet; the next integration step is a `CodeCoreLsp` wrapper that
-pumps frames through a host-provided transport (socket, pipe or platform
-channel). No language server is bundled and sync is full-text.
+`core.createLsp()` returns a `CodeCoreLsp` backed by the shared native client.
+The host owns the language-server process, pipe or socket; CodeCore handles
+framing, request ids, lifecycle, document sync and result/diagnostic queues.
+
+```dart
+final lsp = core.createLsp();
+lsp.initialize('file:///project');
+
+// Drain every frame and write it to your transport.
+for (var frame = lsp.takeOutgoing(); frame != null; frame = lsp.takeOutgoing()) {
+  server.write(frame);
+}
+
+// Feed bytes received from the server back into the client.
+lsp.feed(await server.read());
+
+lsp.didOpen('file:///project/main.py', 'python', 1, doc.text);
+final id = lsp.completion('file:///project/main.py', 2, 4);
+
+for (var result = lsp.takeResult(); result != null; result = lsp.takeResult()) {
+  print('${result.method}: ${result.payload} ${result.isError}');
+}
+for (var report = lsp.takeDiagnostics(); report != null; report = lsp.takeDiagnostics()) {
+  print('${report.uri}: ${report.payload}');
+}
+```
+
+Convenience methods: `completion`, `hover`, `definition`, `signatureHelp`,
+`references`, `documentSymbols`, `workspaceSymbols`, `rename`, `formatting`,
+`codeAction` and `semanticTokens`. For any other method use `request(method,
+params)` / `requestRaw(method, json)`, or `notify` / `notifyRaw`. Results are
+raw JSON; `isError` identifies an error response. `cancel(id)`, `shutdown()`,
+`exit()` and `dispose()` are provided.
+
+- Positions are LSP UTF-16 line/character coordinates, not CodeCore byte offsets.
+- Sync is full-text (`TextDocumentSyncKind.Full`).
+- Frames are capped at 16 MB. No language server is bundled.
 
 ## Testing
 
@@ -174,13 +206,15 @@ CODECORE_LIBRARY_PATH=../../build/native/libcodecore.dll \
   dart run tool/smoke_test.dart
 ```
 
-Last run: analyze clean; smoke test **64 checks / 0 failures**.
+Last run: analyze clean; smoke test **64 checks / 0 failures** before Device Guard
+blocked runtime execution. The LSP smoke section is compile-verified only.
+The smoke test now asserts ABI 4.
 
 ## Limitations
 
 - No Flutter widgets, controller widget, gutter, theme or rendering.
 - No async language services; do not call them on the UI thread for large files.
-- Single selection only.
+- Multi-cursor is supported; overlapping selections merge before an edit.
 - Regex patterns run in the native ECMAScript engine; pathological patterns are
   not sandboxed.
 - No semantic intelligence or execution.

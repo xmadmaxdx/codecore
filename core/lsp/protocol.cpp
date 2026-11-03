@@ -81,7 +81,7 @@ bool FrameParser::next(LspMessage* out, std::string* error) {
         char* end = nullptr;
         const unsigned long long parsed = std::strtoull(text.c_str(), &end, 10);
         if (!end || *end != '\0' || parsed > kMaxFrameBytes) {
-          buffer_.erase(0, headerEnd + separatorLength);
+          buffer_.clear();
           if (error) {
             *error = "invalid Content-Length header";
           }
@@ -95,7 +95,7 @@ bool FrameParser::next(LspMessage* out, std::string* error) {
   }
 
   if (contentLength == static_cast<size_t>(-1)) {
-    buffer_.erase(0, headerEnd + separatorLength);
+    buffer_.clear();
     if (error) {
       *error = "missing Content-Length header";
     }

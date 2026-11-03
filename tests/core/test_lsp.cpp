@@ -160,9 +160,11 @@ void testCAbi() {
   cc_string_free(frame);
   CHECK(cc_lsp_is_initialized(client) == 0);
   CHECK(cc_lsp_completion(client, "file:///x", 0, 0) > 0);
+  int64_t resultId = 0;
   char* method = nullptr;
   char* payload = nullptr;
-  CHECK(cc_lsp_take_result(client, &method, &payload) == 0);
+  uint8_t isError = 0;
+  CHECK(cc_lsp_take_result(client, &resultId, &method, &payload, &isError) == 0);
   CHECK(method == nullptr && payload == nullptr);
   cc_lsp_destroy(client);
 }
