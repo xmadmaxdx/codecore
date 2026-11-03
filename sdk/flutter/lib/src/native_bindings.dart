@@ -159,6 +159,44 @@ final class CcDiffLine extends Struct {
   external Pointer<Uint8> text;
 }
 
+final class CcSyntaxHighlight extends Struct {
+  @Uint32()
+  external int start;
+
+  @Uint32()
+  external int end;
+
+  @Uint32()
+  external int kind;
+
+  external Pointer<Uint8> capture;
+}
+
+final class CcSyntaxError extends Struct {
+  @Uint32()
+  external int start;
+
+  @Uint32()
+  external int end;
+
+  @Uint32()
+  external int startRow;
+
+  @Uint32()
+  external int startColumn;
+
+  @Uint32()
+  external int endRow;
+
+  @Uint32()
+  external int endColumn;
+
+  @Uint8()
+  external int missing;
+
+  external Pointer<Uint8> nodeType;
+}
+
 final class CcChangeEvent extends Struct {
   @Uint64()
   external int version;
@@ -230,8 +268,7 @@ typedef _DocumentCreateDart = Pointer<Void> Function(
 typedef _DocumentDestroyNative = Void Function(Pointer<Void>);
 typedef _DocumentDestroyDart = void Function(Pointer<Void>);
 
-typedef _SetTextNative = Int32 Function(
-    Pointer<Void>, Pointer<Uint8>, IntPtr);
+typedef _SetTextNative = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr);
 typedef _SetTextDart = int Function(Pointer<Void>, Pointer<Uint8>, int);
 
 typedef _GetTextNative = Pointer<Uint8> Function(
@@ -270,8 +307,7 @@ typedef _LastErrorDart = Pointer<Uint8> Function(Pointer<Void>);
 
 typedef _InsertNative = Int32 Function(
     Pointer<Void>, IntPtr, Pointer<Uint8>, IntPtr);
-typedef _InsertDart = int Function(
-    Pointer<Void>, int, Pointer<Uint8>, int);
+typedef _InsertDart = int Function(Pointer<Void>, int, Pointer<Uint8>, int);
 
 typedef _EraseNative = Int32 Function(Pointer<Void>, IntPtr, IntPtr);
 typedef _EraseDart = int Function(Pointer<Void>, int, int);
@@ -310,8 +346,7 @@ typedef _PositionToOffsetDart = int Function(
 typedef _GetSelectionNative = CcSelection Function(Pointer<Void>);
 typedef _GetSelectionDart = CcSelection Function(Pointer<Void>);
 
-typedef _SetSelectionNative = Int32 Function(
-    Pointer<Void>, Uint32, Uint32);
+typedef _SetSelectionNative = Int32 Function(Pointer<Void>, Uint32, Uint32);
 typedef _SetSelectionDart = int Function(Pointer<Void>, int, int);
 
 typedef _MoveCursorNative = Int32 Function(Pointer<Void>, Uint32, Uint8);
@@ -322,8 +357,7 @@ typedef _CursorCountDart = int Function(Pointer<Void>);
 
 typedef _CursorAtNative = Int32 Function(
     Pointer<Void>, IntPtr, Pointer<CcSelection>);
-typedef _CursorAtDart = int Function(
-    Pointer<Void>, int, Pointer<CcSelection>);
+typedef _CursorAtDart = int Function(Pointer<Void>, int, Pointer<CcSelection>);
 
 typedef _AddCursorNative = Int32 Function(Pointer<Void>, Uint32, Uint32);
 typedef _AddCursorDart = int Function(Pointer<Void>, int, int);
@@ -336,16 +370,14 @@ typedef _MoveCursorsDart = int Function(Pointer<Void>, int, int);
 
 typedef _MultiInsertNative = Int32 Function(
     Pointer<Void>, Pointer<Uint8>, IntPtr);
-typedef _MultiInsertDart = int Function(
-    Pointer<Void>, Pointer<Uint8>, int);
+typedef _MultiInsertDart = int Function(Pointer<Void>, Pointer<Uint8>, int);
 
 typedef _MultiEraseNative = Int32 Function(Pointer<Void>, Uint8);
 typedef _MultiEraseDart = int Function(Pointer<Void>, int);
 
 typedef _MatchBracketNative = Int32 Function(
     Pointer<Void>, IntPtr, Pointer<IntPtr>);
-typedef _MatchBracketDart = int Function(
-    Pointer<Void>, int, Pointer<IntPtr>);
+typedef _MatchBracketDart = int Function(Pointer<Void>, int, Pointer<IntPtr>);
 
 typedef _TokenizeNative = IntPtr Function(
     Pointer<Void>, IntPtr, IntPtr, Pointer<Pointer<CcToken>>);
@@ -380,20 +412,10 @@ typedef _FoldingDart = int Function(
 typedef _FreeFoldingNative = Void Function(Pointer<CcFoldingRange>);
 typedef _FreeFoldingDart = void Function(Pointer<CcFoldingRange>);
 
-typedef _SearchNative = Int32 Function(
-    Pointer<Void>,
-    Pointer<Uint8>,
-    IntPtr,
-    Pointer<CcSearchOptions>,
-    Pointer<Pointer<CcRange>>,
-    Pointer<IntPtr>);
-typedef _SearchDart = int Function(
-    Pointer<Void>,
-    Pointer<Uint8>,
-    int,
-    Pointer<CcSearchOptions>,
-    Pointer<Pointer<CcRange>>,
-    Pointer<IntPtr>);
+typedef _SearchNative = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr,
+    Pointer<CcSearchOptions>, Pointer<Pointer<CcRange>>, Pointer<IntPtr>);
+typedef _SearchDart = int Function(Pointer<Void>, Pointer<Uint8>, int,
+    Pointer<CcSearchOptions>, Pointer<Pointer<CcRange>>, Pointer<IntPtr>);
 
 typedef _FreeRangesNative = Void Function(Pointer<CcRange>);
 typedef _FreeRangesDart = void Function(Pointer<CcRange>);
@@ -461,18 +483,46 @@ typedef _SnapshotGetTextDart = Pointer<Uint8> Function(
 typedef _RestoreSnapshotNative = Int32 Function(Pointer<Void>, Pointer<Void>);
 typedef _RestoreSnapshotDart = int Function(Pointer<Void>, Pointer<Void>);
 
-typedef _SetChangeListenerNative = Void Function(
-    Pointer<Void>, Pointer<NativeFunction<ChangeCallbackNative>>, Pointer<Void>);
-typedef _SetChangeListenerDart = void Function(
-    Pointer<Void>, Pointer<NativeFunction<ChangeCallbackNative>>, Pointer<Void>);
+typedef _SyntaxSupportedNative = Uint8 Function(Pointer<Uint8>);
+typedef _SyntaxSupportedDart = int Function(Pointer<Uint8>);
+
+typedef _SyntaxTreeCreateNative = Pointer<Void> Function(Pointer<Void>);
+typedef _SyntaxTreeCreateDart = Pointer<Void> Function(Pointer<Void>);
+
+typedef _SyntaxTreeDestroyNative = Void Function(Pointer<Void>);
+typedef _SyntaxTreeDestroyDart = void Function(Pointer<Void>);
+
+typedef _SyntaxTreeStringNative = Pointer<Uint8> Function(Pointer<Void>);
+typedef _SyntaxTreeStringDart = Pointer<Uint8> Function(Pointer<Void>);
+
+typedef _SyntaxTreeCountNative = IntPtr Function(Pointer<Void>);
+typedef _SyntaxTreeCountDart = int Function(Pointer<Void>);
+
+typedef _SyntaxTreeBoolNative = Uint8 Function(Pointer<Void>);
+typedef _SyntaxTreeBoolDart = int Function(Pointer<Void>);
+
+typedef _SyntaxHighlightAtNative = Uint8 Function(
+    Pointer<Void>, IntPtr, Pointer<CcSyntaxHighlight>);
+typedef _SyntaxHighlightAtDart = int Function(
+    Pointer<Void>, int, Pointer<CcSyntaxHighlight>);
+
+typedef _SyntaxErrorAtNative = Uint8 Function(
+    Pointer<Void>, IntPtr, Pointer<CcSyntaxError>);
+typedef _SyntaxErrorAtDart = int Function(
+    Pointer<Void>, int, Pointer<CcSyntaxError>);
+
+typedef _SetChangeListenerNative = Void Function(Pointer<Void>,
+    Pointer<NativeFunction<ChangeCallbackNative>>, Pointer<Void>);
+typedef _SetChangeListenerDart = void Function(Pointer<Void>,
+    Pointer<NativeFunction<ChangeCallbackNative>>, Pointer<Void>);
 
 /// Direct, unmanaged access to the native library.
 ///
 /// The Dart SDK wraps this class; applications should not normally use it.
 class CodeCoreBindings {
   CodeCoreBindings(this.library) {
-    abiVersion = library.lookupFunction<_AbiVersionNative, _AbiVersionDart>(
-        'cc_abi_version');
+    abiVersion = library
+        .lookupFunction<_AbiVersionNative, _AbiVersionDart>('cc_abi_version');
     versionString =
         library.lookupFunction<_VersionStringNative, _VersionStringDart>(
             'cc_version_string');
@@ -488,172 +538,223 @@ class CodeCoreBindings {
             'cc_engine_destroy');
     engineLanguageCount = library.lookupFunction<_EngineLanguageCountNative,
         _EngineLanguageCountDart>('cc_engine_language_count');
-    engineLanguageAt = library.lookupFunction<_EngineLanguageAtNative,
-        _EngineLanguageAtDart>('cc_engine_language_at');
+    engineLanguageAt =
+        library.lookupFunction<_EngineLanguageAtNative, _EngineLanguageAtDart>(
+            'cc_engine_language_at');
     engineFindLanguage = library.lookupFunction<_EngineFindLanguageNative,
         _EngineFindLanguageDart>('cc_engine_find_language');
-    documentCreate = library.lookupFunction<_DocumentCreateNative,
-        _DocumentCreateDart>('cc_document_create');
-    documentDestroy = library.lookupFunction<_DocumentDestroyNative,
-        _DocumentDestroyDart>('cc_document_destroy');
-    documentSetText =
-        library.lookupFunction<_SetTextNative, _SetTextDart>(
-            'cc_document_set_text');
-    documentGetText =
-        library.lookupFunction<_GetTextNative, _GetTextDart>(
-            'cc_document_get_text');
-    documentLength =
-        library.lookupFunction<_LengthNative, _LengthDart>(
-            'cc_document_length');
-    documentVersion =
-        library.lookupFunction<_VersionNative, _VersionDart>(
-            'cc_document_version');
-    documentLanguage =
-        library.lookupFunction<_LanguageNative, _LanguageDart>(
-            'cc_document_language');
-    documentSetLanguage = library.lookupFunction<_SetLanguageNative,
-        _SetLanguageDart>('cc_document_set_language');
+    documentCreate =
+        library.lookupFunction<_DocumentCreateNative, _DocumentCreateDart>(
+            'cc_document_create');
+    documentDestroy =
+        library.lookupFunction<_DocumentDestroyNative, _DocumentDestroyDart>(
+            'cc_document_destroy');
+    documentSetText = library
+        .lookupFunction<_SetTextNative, _SetTextDart>('cc_document_set_text');
+    documentGetText = library
+        .lookupFunction<_GetTextNative, _GetTextDart>('cc_document_get_text');
+    documentLength = library
+        .lookupFunction<_LengthNative, _LengthDart>('cc_document_length');
+    documentVersion = library
+        .lookupFunction<_VersionNative, _VersionDart>('cc_document_version');
+    documentLanguage = library
+        .lookupFunction<_LanguageNative, _LanguageDart>('cc_document_language');
+    documentSetLanguage =
+        library.lookupFunction<_SetLanguageNative, _SetLanguageDart>(
+            'cc_document_set_language');
     documentIsReadOnly = library.lookupFunction<_ReadOnlyNative, _ReadOnlyDart>(
         'cc_document_is_read_only');
-    documentSetReadOnly = library.lookupFunction<_SetReadOnlyNative,
-        _SetReadOnlyDart>('cc_document_set_read_only');
-    documentSetEditable = library.lookupFunction<_SetReadOnlyNative,
-        _SetReadOnlyDart>('cc_document_set_editable');
-    documentEditOrigin = library.lookupFunction<_EditOriginNative,
-        _EditOriginDart>('cc_document_edit_origin');
-    documentSetEditOrigin = library.lookupFunction<_SetEditOriginNative,
-        _SetEditOriginDart>('cc_document_set_edit_origin');
-    documentTabSize =
-        library.lookupFunction<_TabSizeNative, _TabSizeDart>(
-            'cc_document_tab_size');
+    documentSetReadOnly =
+        library.lookupFunction<_SetReadOnlyNative, _SetReadOnlyDart>(
+            'cc_document_set_read_only');
+    documentSetEditable =
+        library.lookupFunction<_SetReadOnlyNative, _SetReadOnlyDart>(
+            'cc_document_set_editable');
+    documentEditOrigin =
+        library.lookupFunction<_EditOriginNative, _EditOriginDart>(
+            'cc_document_edit_origin');
+    documentSetEditOrigin =
+        library.lookupFunction<_SetEditOriginNative, _SetEditOriginDart>(
+            'cc_document_set_edit_origin');
+    documentTabSize = library
+        .lookupFunction<_TabSizeNative, _TabSizeDart>('cc_document_tab_size');
     documentLastError =
         library.lookupFunction<_LastErrorNative, _LastErrorDart>(
             'cc_document_last_error');
-    documentInsert =
-        library.lookupFunction<_InsertNative, _InsertDart>(
-            'cc_document_insert');
+    documentInsert = library
+        .lookupFunction<_InsertNative, _InsertDart>('cc_document_insert');
     documentErase =
-        library.lookupFunction<_EraseNative, _EraseDart>(
-            'cc_document_erase');
-    documentReplace =
-        library.lookupFunction<_ReplaceNative, _ReplaceDart>(
-            'cc_document_replace');
+        library.lookupFunction<_EraseNative, _EraseDart>('cc_document_erase');
+    documentReplace = library
+        .lookupFunction<_ReplaceNative, _ReplaceDart>('cc_document_replace');
     documentCanUndo =
-        library.lookupFunction<_BoolNative, _BoolDart>(
-            'cc_document_can_undo');
+        library.lookupFunction<_BoolNative, _BoolDart>('cc_document_can_undo');
     documentCanRedo =
-        library.lookupFunction<_BoolNative, _BoolDart>(
-            'cc_document_can_redo');
+        library.lookupFunction<_BoolNative, _BoolDart>('cc_document_can_redo');
     documentUndo =
-        library.lookupFunction<_StatusNative, _StatusDart>(
-            'cc_document_undo');
+        library.lookupFunction<_StatusNative, _StatusDart>('cc_document_undo');
     documentRedo =
-        library.lookupFunction<_StatusNative, _StatusDart>(
-            'cc_document_redo');
-    documentClearHistory = library.lookupFunction<
-        Void Function(Pointer<Void>),
+        library.lookupFunction<_StatusNative, _StatusDart>('cc_document_redo');
+    documentClearHistory = library.lookupFunction<Void Function(Pointer<Void>),
         void Function(Pointer<Void>)>('cc_document_clear_history');
-    documentSetHistoryLimit = library.lookupFunction<_HistoryLimitNative,
-        _HistoryLimitDart>('cc_document_set_history_limit');
+    documentSetHistoryLimit =
+        library.lookupFunction<_HistoryLimitNative, _HistoryLimitDart>(
+            'cc_document_set_history_limit');
     documentLineCount =
         library.lookupFunction<_LineCountNative, _LineCountDart>(
             'cc_document_line_count');
-    documentLineAt =
-        library.lookupFunction<_LineAtNative, _LineAtDart>(
-            'cc_document_line_at');
-    documentOffsetToPosition = library.lookupFunction<
-        _OffsetToPositionNative,
-        _OffsetToPositionDart>('cc_document_offset_to_position');
-    documentPositionToOffset = library.lookupFunction<
-        _PositionToOffsetNative,
-        _PositionToOffsetDart>('cc_document_position_to_offset');
-    documentGetSelection = library.lookupFunction<_GetSelectionNative,
-        _GetSelectionDart>('cc_document_get_selection');
-    documentSetSelection = library.lookupFunction<_SetSelectionNative,
-        _SetSelectionDart>('cc_document_set_selection');
+    documentLineAt = library
+        .lookupFunction<_LineAtNative, _LineAtDart>('cc_document_line_at');
+    documentOffsetToPosition =
+        library.lookupFunction<_OffsetToPositionNative, _OffsetToPositionDart>(
+            'cc_document_offset_to_position');
+    documentPositionToOffset =
+        library.lookupFunction<_PositionToOffsetNative, _PositionToOffsetDart>(
+            'cc_document_position_to_offset');
+    documentGetSelection =
+        library.lookupFunction<_GetSelectionNative, _GetSelectionDart>(
+            'cc_document_get_selection');
+    documentSetSelection =
+        library.lookupFunction<_SetSelectionNative, _SetSelectionDart>(
+            'cc_document_set_selection');
     documentMoveCursor =
         library.lookupFunction<_MoveCursorNative, _MoveCursorDart>(
             'cc_document_move_cursor');
-    documentCursorCount = library.lookupFunction<_CursorCountNative,
-        _CursorCountDart>('cc_document_cursor_count');
-    documentCursorAt = library
-        .lookupFunction<_CursorAtNative, _CursorAtDart>('cc_document_cursor_at');
-    documentAddCursor = library.lookupFunction<_AddCursorNative,
-        _AddCursorDart>('cc_document_add_cursor');
-    documentClearCursors = library.lookupFunction<_ClearCursorsNative,
-        _ClearCursorsDart>('cc_document_clear_cursors');
-    documentMoveCursors = library.lookupFunction<_MoveCursorsNative,
-        _MoveCursorsDart>('cc_document_move_cursors');
-    documentMultiInsert = library.lookupFunction<_MultiInsertNative,
-        _MultiInsertDart>('cc_document_multi_insert');
-    documentMultiErase = library.lookupFunction<_MultiEraseNative,
-        _MultiEraseDart>('cc_document_multi_erase');
-    documentMatchBracket = library.lookupFunction<_MatchBracketNative,
-        _MatchBracketDart>('cc_document_match_bracket');
-    documentTokenize =
-        library.lookupFunction<_TokenizeNative, _TokenizeDart>(
-            'cc_document_tokenize');
-    tokensFree =
-        library.lookupFunction<_FreeTokensNative, _FreeTokensDart>(
-            'cc_tokens_free');
-    documentComplete =
-        library.lookupFunction<_CompleteNative, _CompleteDart>(
-            'cc_document_complete');
-    completionsFree = library.lookupFunction<_FreeCompletionsNative,
-        _FreeCompletionsDart>('cc_completions_free');
-    documentDiagnose =
-        library.lookupFunction<_DiagnoseNative, _DiagnoseDart>(
-            'cc_document_diagnose');
-    diagnosticsFree = library.lookupFunction<_FreeDiagnosticsNative,
-        _FreeDiagnosticsDart>('cc_diagnostics_free');
+    documentCursorCount =
+        library.lookupFunction<_CursorCountNative, _CursorCountDart>(
+            'cc_document_cursor_count');
+    documentCursorAt = library.lookupFunction<_CursorAtNative, _CursorAtDart>(
+        'cc_document_cursor_at');
+    documentAddCursor =
+        library.lookupFunction<_AddCursorNative, _AddCursorDart>(
+            'cc_document_add_cursor');
+    documentClearCursors =
+        library.lookupFunction<_ClearCursorsNative, _ClearCursorsDart>(
+            'cc_document_clear_cursors');
+    documentMoveCursors =
+        library.lookupFunction<_MoveCursorsNative, _MoveCursorsDart>(
+            'cc_document_move_cursors');
+    documentMultiInsert =
+        library.lookupFunction<_MultiInsertNative, _MultiInsertDart>(
+            'cc_document_multi_insert');
+    documentMultiErase =
+        library.lookupFunction<_MultiEraseNative, _MultiEraseDart>(
+            'cc_document_multi_erase');
+    documentMatchBracket =
+        library.lookupFunction<_MatchBracketNative, _MatchBracketDart>(
+            'cc_document_match_bracket');
+    documentTokenize = library
+        .lookupFunction<_TokenizeNative, _TokenizeDart>('cc_document_tokenize');
+    tokensFree = library
+        .lookupFunction<_FreeTokensNative, _FreeTokensDart>('cc_tokens_free');
+    documentComplete = library
+        .lookupFunction<_CompleteNative, _CompleteDart>('cc_document_complete');
+    completionsFree =
+        library.lookupFunction<_FreeCompletionsNative, _FreeCompletionsDart>(
+            'cc_completions_free');
+    documentDiagnose = library
+        .lookupFunction<_DiagnoseNative, _DiagnoseDart>('cc_document_diagnose');
+    diagnosticsFree =
+        library.lookupFunction<_FreeDiagnosticsNative, _FreeDiagnosticsDart>(
+            'cc_diagnostics_free');
     documentFoldingRanges =
         library.lookupFunction<_FoldingNative, _FoldingDart>(
             'cc_document_folding_ranges');
-    foldingRangesFree = library.lookupFunction<_FreeFoldingNative,
-        _FreeFoldingDart>('cc_folding_ranges_free');
-    documentSearch =
-        library.lookupFunction<_SearchNative, _SearchDart>('cc_document_search');
-    searchRangesFree = library.lookupFunction<_FreeRangesNative,
-        _FreeRangesDart>('cc_search_ranges_free');
-    documentSetProposedText = library.lookupFunction<_SetProposedNative,
-        _SetProposedDart>('cc_document_set_proposed_text');
-    documentHasProposal = library.lookupFunction<_HasProposalNative,
-        _HasProposalDart>('cc_document_has_proposal');
-    documentGetProposedText = library.lookupFunction<_GetProposedNative,
-        _GetProposedDart>('cc_document_get_proposed_text');
-    documentProposalDiff = library.lookupFunction<_ProposalDiffNative,
-        _ProposalDiffDart>('cc_document_proposal_diff');
-    diffLinesFree = library.lookupFunction<_FreeDiffLinesNative,
-        _FreeDiffLinesDart>('cc_diff_lines_free');
-    documentAcceptProposal = library.lookupFunction<_AcceptProposalNative,
-        _AcceptProposalDart>('cc_document_accept_proposal');
-    documentRejectProposal = library.lookupFunction<_AcceptProposalNative,
-        _AcceptProposalDart>('cc_document_reject_proposal');
-    documentSetGhostText = library.lookupFunction<_SetGhostNative,
-        _SetGhostDart>('cc_document_set_ghost_text');
-    documentGetGhostText = library.lookupFunction<_GetGhostNative,
-        _GetGhostDart>('cc_document_get_ghost_text');
-    documentAcceptGhostText = library.lookupFunction<_AcceptGhostNative,
-        _AcceptGhostDart>('cc_document_accept_ghost_text');
-    documentDismissGhostText = library.lookupFunction<_DismissGhostNative,
-        _DismissGhostDart>('cc_document_dismiss_ghost_text');
-    snapshotCreate = library.lookupFunction<_SnapshotCreateNative,
-        _SnapshotCreateDart>('cc_document_create_snapshot');
-    snapshotDestroy = library.lookupFunction<_SnapshotDestroyNative,
-        _SnapshotDestroyDart>('cc_snapshot_destroy');
-    snapshotVersion = library.lookupFunction<_SnapshotVersionNative,
-        _SnapshotVersionDart>('cc_snapshot_version');
-    snapshotLength = library.lookupFunction<_SnapshotLengthNative,
-        _SnapshotLengthDart>('cc_snapshot_length');
-    snapshotLanguage = library.lookupFunction<_SnapshotLanguageNative,
-        _SnapshotLanguageDart>('cc_snapshot_language');
-    snapshotGetText = library.lookupFunction<_SnapshotGetTextNative,
-        _SnapshotGetTextDart>('cc_snapshot_get_text');
-    documentRestoreSnapshot = library.lookupFunction<_RestoreSnapshotNative,
-        _RestoreSnapshotDart>('cc_document_restore_snapshot');
-    documentSetChangeListener = library.lookupFunction<
-        _SetChangeListenerNative,
+    foldingRangesFree =
+        library.lookupFunction<_FreeFoldingNative, _FreeFoldingDart>(
+            'cc_folding_ranges_free');
+    documentSearch = library
+        .lookupFunction<_SearchNative, _SearchDart>('cc_document_search');
+    searchRangesFree =
+        library.lookupFunction<_FreeRangesNative, _FreeRangesDart>(
+            'cc_search_ranges_free');
+    documentSetProposedText =
+        library.lookupFunction<_SetProposedNative, _SetProposedDart>(
+            'cc_document_set_proposed_text');
+    documentHasProposal =
+        library.lookupFunction<_HasProposalNative, _HasProposalDart>(
+            'cc_document_has_proposal');
+    documentGetProposedText =
+        library.lookupFunction<_GetProposedNative, _GetProposedDart>(
+            'cc_document_get_proposed_text');
+    documentProposalDiff =
+        library.lookupFunction<_ProposalDiffNative, _ProposalDiffDart>(
+            'cc_document_proposal_diff');
+    diffLinesFree =
+        library.lookupFunction<_FreeDiffLinesNative, _FreeDiffLinesDart>(
+            'cc_diff_lines_free');
+    documentAcceptProposal =
+        library.lookupFunction<_AcceptProposalNative, _AcceptProposalDart>(
+            'cc_document_accept_proposal');
+    documentRejectProposal =
+        library.lookupFunction<_AcceptProposalNative, _AcceptProposalDart>(
+            'cc_document_reject_proposal');
+    documentSetGhostText =
+        library.lookupFunction<_SetGhostNative, _SetGhostDart>(
+            'cc_document_set_ghost_text');
+    documentGetGhostText =
+        library.lookupFunction<_GetGhostNative, _GetGhostDart>(
+            'cc_document_get_ghost_text');
+    documentAcceptGhostText =
+        library.lookupFunction<_AcceptGhostNative, _AcceptGhostDart>(
+            'cc_document_accept_ghost_text');
+    documentDismissGhostText =
+        library.lookupFunction<_DismissGhostNative, _DismissGhostDart>(
+            'cc_document_dismiss_ghost_text');
+    snapshotCreate =
+        library.lookupFunction<_SnapshotCreateNative, _SnapshotCreateDart>(
+            'cc_document_create_snapshot');
+    snapshotDestroy =
+        library.lookupFunction<_SnapshotDestroyNative, _SnapshotDestroyDart>(
+            'cc_snapshot_destroy');
+    snapshotVersion =
+        library.lookupFunction<_SnapshotVersionNative, _SnapshotVersionDart>(
+            'cc_snapshot_version');
+    snapshotLength =
+        library.lookupFunction<_SnapshotLengthNative, _SnapshotLengthDart>(
+            'cc_snapshot_length');
+    snapshotLanguage =
+        library.lookupFunction<_SnapshotLanguageNative, _SnapshotLanguageDart>(
+            'cc_snapshot_language');
+    snapshotGetText =
+        library.lookupFunction<_SnapshotGetTextNative, _SnapshotGetTextDart>(
+            'cc_snapshot_get_text');
+    documentRestoreSnapshot =
+        library.lookupFunction<_RestoreSnapshotNative, _RestoreSnapshotDart>(
+            'cc_document_restore_snapshot');
+    documentSetChangeListener = library.lookupFunction<_SetChangeListenerNative,
         _SetChangeListenerDart>('cc_document_set_change_listener');
+    syntaxLanguageSupported =
+        library.lookupFunction<_SyntaxSupportedNative, _SyntaxSupportedDart>(
+            'cc_syntax_language_supported');
+    documentSyntaxTree =
+        library.lookupFunction<_SyntaxTreeCreateNative, _SyntaxTreeCreateDart>(
+            'cc_document_syntax_tree');
+    syntaxTreeDestroy = library.lookupFunction<_SyntaxTreeDestroyNative,
+        _SyntaxTreeDestroyDart>('cc_syntax_tree_destroy');
+    syntaxTreeLanguage =
+        library.lookupFunction<_SyntaxTreeStringNative, _SyntaxTreeStringDart>(
+            'cc_syntax_tree_language');
+    syntaxTreeRootType =
+        library.lookupFunction<_SyntaxTreeStringNative, _SyntaxTreeStringDart>(
+            'cc_syntax_tree_root_type');
+    syntaxTreeNodeCount =
+        library.lookupFunction<_SyntaxTreeCountNative, _SyntaxTreeCountDart>(
+            'cc_syntax_tree_node_count');
+    syntaxTreeHasErrors =
+        library.lookupFunction<_SyntaxTreeBoolNative, _SyntaxTreeBoolDart>(
+            'cc_syntax_tree_has_errors');
+    syntaxTreeHighlightCount =
+        library.lookupFunction<_SyntaxTreeCountNative, _SyntaxTreeCountDart>(
+            'cc_syntax_tree_highlight_count');
+    syntaxTreeHighlightAt = library.lookupFunction<_SyntaxHighlightAtNative,
+        _SyntaxHighlightAtDart>('cc_syntax_tree_highlight_at');
+    syntaxTreeErrorCount =
+        library.lookupFunction<_SyntaxTreeCountNative, _SyntaxTreeCountDart>(
+            'cc_syntax_tree_error_count');
+    syntaxTreeErrorAt =
+        library.lookupFunction<_SyntaxErrorAtNative, _SyntaxErrorAtDart>(
+            'cc_syntax_tree_error_at');
   }
 
   final DynamicLibrary library;
@@ -736,6 +837,17 @@ class CodeCoreBindings {
   late final _SnapshotGetTextDart snapshotGetText;
   late final _RestoreSnapshotDart documentRestoreSnapshot;
   late final _SetChangeListenerDart documentSetChangeListener;
+  late final _SyntaxSupportedDart syntaxLanguageSupported;
+  late final _SyntaxTreeCreateDart documentSyntaxTree;
+  late final _SyntaxTreeDestroyDart syntaxTreeDestroy;
+  late final _SyntaxTreeStringDart syntaxTreeLanguage;
+  late final _SyntaxTreeStringDart syntaxTreeRootType;
+  late final _SyntaxTreeCountDart syntaxTreeNodeCount;
+  late final _SyntaxTreeBoolDart syntaxTreeHasErrors;
+  late final _SyntaxTreeCountDart syntaxTreeHighlightCount;
+  late final _SyntaxHighlightAtDart syntaxTreeHighlightAt;
+  late final _SyntaxTreeCountDart syntaxTreeErrorCount;
+  late final _SyntaxErrorAtDart syntaxTreeErrorAt;
 
   Pointer<Uint8> allocate(int bytes) {
     final pointer = alloc(bytes);

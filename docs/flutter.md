@@ -2,9 +2,6 @@
 
 Package: `sdk/flutter`, name `codecore`, version `0.4.0`.
 
-Structural syntax (Tree-sitter highlights and syntax errors) is currently
-available through the C ABI only. The Dart API still exposes lexical tokens;
-the syntax bindings are the next SDK step.
 
 The package is a Dart FFI SDK plus a Flutter Android plugin. It contains no
 editor widgets yet; the widget/renderer layer is a separate milestone.
@@ -82,6 +79,37 @@ doc.clearCursors();              // keep the primary
 
 Overlapping selections merge before the edit. Undo and redo apply the entire
 multi-cursor edit as one entry. Change events fire once per affected range.
+
+## Structural syntax
+
+Tree-sitter is bundled for `python` only. `syntaxTree()` returns `null` for a
+language without a grammar; lexical tokens still work for every language.
+
+```dart
+if (core.supportsStructuralSyntax('python')) {
+  final tree = doc.syntaxTree();
+  if (tree != null) {
+    print(tree.rootType);   // module
+    print(tree.nodeCount);
+    print(tree.hasErrors);  // ERROR / MISSING nodes present
+
+    for (final highlight in tree.highlights) {
+      print('${highlight.start}..${highlight.end} ${highlight.capture}');
+    }
+    for (final error in tree.errors) {
+      print('${error.nodeType} at ${error.startLine}:${error.startColumn}');
+    }
+    tree.dispose();
+  }
+}
+```
+
+- `start`/`end` are UTF-8 byte offsets. Columns are bytes within the row, matching
+  Tree-sitter, not Unicode code points.
+- A tree is an immutable snapshot of one document version. Dispose it when done.
+- Repeated `doc.syntaxTree()` calls on an unchanged version reuse the native
+  tree; edits reparse incrementally from the previous tree.
+- Highlights are structural, not semantic. There is no name or type resolution.
 
 ## Permissions and edit origin
 
@@ -210,9 +238,9 @@ CODECORE_LIBRARY_PATH=../../build/native/libcodecore.dll \
   dart run tool/smoke_test.dart
 ```
 
-Last run: analyze clean; smoke test **64 checks / 0 failures** before Device Guard
-blocked runtime execution. The LSP smoke section is compile-verified only.
-The smoke test now asserts ABI 4.
+Last run: analyze clean; smoke test **99 checks / 0 failures**. The smoke test
+asserts ABI 5 and covers structural syntax, LSP, documents, editing and agent
+features.
 
 ## Limitations
 
@@ -221,6 +249,7 @@ The smoke test now asserts ABI 4.
 - Multi-cursor is supported; overlapping selections merge before an edit.
 - Regex patterns run in the native ECMAScript engine; pathological patterns are
   not sandboxed.
+- Structural syntax is Python-only; other languages use the lexical tokenizer.
 - No semantic intelligence or execution.
 - Android plugin publishing needs the native sources vendored or an AAR; local
   path integration in this repository works from the shared source tree.

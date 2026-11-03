@@ -39,7 +39,8 @@ void main() {
       'python is registered',
     );
     check(core.findLanguage('kotlin') == 1, 'kotlin language id');
-    check(core.findLanguage('brainfuck') == null, 'unknown language is rejected');
+    check(
+        core.findLanguage('brainfuck') == null, 'unknown language is rejected');
 
     final document = core.createDocument(language: 'python');
     const source = '# demo\n'
@@ -59,10 +60,45 @@ void main() {
     check(containsToken(tokens, TokenKind.function), 'function token');
     check(containsToken(tokens, TokenKind.string), 'string token');
     check(containsToken(tokens, TokenKind.number), 'number token');
+    check(core.supportsStructuralSyntax('python'), 'python grammar is bundled');
+    check(
+      !core.supportsStructuralSyntax('javascript'),
+      'javascript grammar is not bundled',
+    );
+
+    final syntax = document.syntaxTree();
+    check(syntax != null, 'python syntax tree is available');
+    if (syntax != null) {
+      check(syntax.language == 'python', 'syntax tree language');
+      check(syntax.rootType == 'module', 'syntax tree root');
+      check(syntax.nodeCount > 10, 'syntax tree node count');
+      check(!syntax.hasErrors, 'valid source has no syntax errors');
+      check(syntax.errors.isEmpty, 'valid source error list is empty');
+      final highlights = syntax.highlights;
+      check(highlights.isNotEmpty, 'syntax highlights are present');
+      check(
+        highlights.any((highlight) => highlight.capture == 'keyword'),
+        'keyword syntax highlight',
+      );
+      check(
+        highlights.any((highlight) => highlight.capture == 'function'),
+        'function syntax highlight',
+      );
+      check(
+        highlights.every((highlight) => highlight.start < highlight.end),
+        'syntax highlight ranges are valid',
+      );
+      syntax.dispose();
+    }
+
+    final noGrammarDoc = core.createDocument(language: 'javascript');
+    check(noGrammarDoc.syntaxTree() == null, 'no grammar means no syntax tree');
+    noGrammarDoc.dispose();
 
     final position = document.offsetToPosition(source.indexOf('return'));
     check(position.line == 3, 'offset to line position');
-    check(document.positionToOffset(3, 4) == source.indexOf('return'), 'position to offset');
+    check(document.positionToOffset(3, 4) == source.indexOf('return'),
+        'position to offset');
 
     document.insert(0, 'X');
     check(document.text.startsWith('X# demo'), 'insert at start');
@@ -88,18 +124,32 @@ void main() {
       diagnostics.any((diagnostic) => diagnostic.message.contains('Unclosed')),
       'unclosed bracket diagnostic',
     );
+    final brokenSyntax = brokenDoc.syntaxTree();
+    check(brokenSyntax != null, 'broken python still produces a tree');
+    if (brokenSyntax != null) {
+      check(brokenSyntax.hasErrors, 'broken source reports syntax errors');
+      check(brokenSyntax.errors.isNotEmpty, 'broken source error list');
+      check(
+        brokenSyntax.errors.first.nodeType == 'ERROR' ||
+            brokenSyntax.errors.first.missing,
+        'syntax error is an ERROR or MISSING node',
+      );
+      brokenSyntax.dispose();
+    }
     brokenDoc.dispose();
 
     final jsDoc = core.createDocument(language: 'javascript');
     jsDoc.text = 'function outer() {\n  if (ready) {\n    work();\n  }\n}\n';
     final folds = jsDoc.foldingRanges();
     check(folds.length >= 2, 'nested brace folding ranges');
-    check(folds.every((range) => range.endLine > range.startLine), 'fold ranges are valid');
+    check(folds.every((range) => range.endLine > range.startLine),
+        'fold ranges are valid');
 
     final findDoc = core.createDocument(language: 'javascript');
     findDoc.text = 'Hello hello world\nhell\n';
     check(findDoc.find('hello').length == 2, 'case-insensitive find');
-    check(findDoc.find('hello', caseSensitive: true).length == 1, 'case-sensitive find');
+    check(findDoc.find('hello', caseSensitive: true).length == 1,
+        'case-sensitive find');
     check(findDoc.find('hell', wholeWord: true).length == 1, 'whole-word find');
     check(findDoc.find(r'h.llo', regex: true).length == 2, 'regex find');
     check(
@@ -124,7 +174,8 @@ void main() {
     multiDoc.insertAtCursors('# ');
     check(multiDoc.text == '# one\n# two\nthree\n', 'multi cursor insert');
     check(multiDoc.selection.focus == 2, 'primary caret after multi insert');
-    check(multiDoc.cursorAt(1).focus == 8, 'secondary caret after multi insert');
+    check(
+        multiDoc.cursorAt(1).focus == 8, 'secondary caret after multi insert');
     check(multiDoc.undo(), 'multi insert undo');
     check(multiDoc.text == 'one\ntwo\nthree\n', 'multi insert undo text');
     check(multiDoc.redo(), 'multi insert redo');
@@ -166,11 +217,15 @@ void main() {
     check(agentDoc.hasProposal, 'proposal is stored');
     check(agentDoc.text == 'one\ntwo\n', 'proposal does not mutate document');
     final diff = agentDoc.proposalDiff;
-    check(diff.any((line) => line.kind == DiffKind.insert), 'proposal diff has insertions');
-    check(diff.any((line) => line.kind == DiffKind.delete), 'proposal diff has deletions');
+    check(diff.any((line) => line.kind == DiffKind.insert),
+        'proposal diff has insertions');
+    check(diff.any((line) => line.kind == DiffKind.delete),
+        'proposal diff has deletions');
     agentDoc.acceptProposal();
-    check(agentDoc.text == 'one\nchanged\nthree\n', 'proposal acceptance is atomic');
-    check(agentEvent?.kind == ChangeKind.proposalAccepted, 'proposal accepted event');
+    check(agentDoc.text == 'one\nchanged\nthree\n',
+        'proposal acceptance is atomic');
+    check(agentEvent?.kind == ChangeKind.proposalAccepted,
+        'proposal accepted event');
     check(agentEvent?.origin == EditOrigin.ai, 'proposal origin is AI');
     check(agentDoc.undo(), 'proposal acceptance is one undo step');
     check(agentDoc.text == 'one\ntwo\n', 'undo restores pre-proposal text');
@@ -180,7 +235,8 @@ void main() {
     check(agentDoc.text == 'one\ntwo\n', 'ghost text is not inserted');
     agentDoc.acceptGhostText(maxCodePoints: 6);
     check(agentDoc.text.endsWith('return'), 'partial ghost acceptance');
-    check(agentEvent?.kind == ChangeKind.ghostTextAccepted, 'ghost accepted event');
+    check(agentEvent?.kind == ChangeKind.ghostTextAccepted,
+        'ghost accepted event');
     agentDoc.undo();
     agentDoc.showGhostText(0, 'x');
     agentDoc.dismissGhostText();
@@ -190,7 +246,8 @@ void main() {
     agentDoc.text = 'replacement\n';
     agentDoc.restoreSnapshot(snapshot);
     check(agentDoc.text == 'one\ntwo\n', 'snapshot restore');
-    check(agentEvent?.kind == ChangeKind.snapshotRestored, 'snapshot restore event');
+    check(agentEvent?.kind == ChangeKind.snapshotRestored,
+        'snapshot restore event');
     check(agentDoc.undo(), 'snapshot restore is undoable');
     check(agentDoc.text == 'replacement\n', 'undo after snapshot restore');
     snapshot.dispose();
@@ -248,14 +305,15 @@ void main() {
       }
     }
     check(
-      didOpenFrame != null &&
-          didOpenFrame.contains('textDocument/didOpen'),
+      didOpenFrame != null && didOpenFrame.contains('textDocument/didOpen'),
       'LSP didOpen frame',
     );
     lsp.dispose();
 
-    check(core.languages.every((language) => language.supportsSyntax), 'all languages expose syntax');
-    check(core.languages.every((language) => language.supportsCompletion), 'all languages expose completion');
+    check(core.languages.every((language) => language.supportsSyntax),
+        'all languages expose syntax');
+    check(core.languages.every((language) => language.supportsCompletion),
+        'all languages expose completion');
   } on Object catch (error, stackTrace) {
     failures += 1;
     stdout.writeln('FATAL: $error');

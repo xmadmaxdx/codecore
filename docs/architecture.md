@@ -273,8 +273,9 @@ not a replacement for the CodeCore document model or completion engine.
 
 - **Dart** (`sdk/flutter`): hand-written `dart:ffi`; no package dependencies.
   The package includes an Android Gradle/CMake plugin that builds
-  `libcodecore.so` from the shared sources. `CodeCoreLsp` pumps LSP frames
-  without a bundled transport. Publishing needs the native sources vendored
+  `libcodecore.so` from the shared sources. `SyntaxTree` exposes structural
+  highlights and syntax errors for bundled grammars. `CodeCoreLsp` pumps LSP
+  frames without a bundled transport. Publishing needs the native sources vendored
   into the package or a prebuilt AAR.
 - **Kotlin** (`sdk/kotlin`): JNI bridge with explicit UTF-8/UTF-16 conversion.
   The Gradle wrapper and NDK version are included. `:assembleDebug` compiles the

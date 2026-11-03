@@ -5,7 +5,6 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
-
 import 'lsp.dart';
 import 'models.dart';
 import 'native_bindings.dart';
@@ -31,9 +30,8 @@ class CodeCore {
   static CodeCore open({String? libraryPath}) {
     final library = _openLibrary(libraryPath);
     final bindings = CodeCoreBindings(library);
-    final config = bindings
-        .allocate(sizeOf<CcEngineConfig>())
-        .cast<CcEngineConfig>();
+    final config =
+        bindings.allocate(sizeOf<CcEngineConfig>()).cast<CcEngineConfig>();
     config.ref.structSize = sizeOf<CcEngineConfig>();
     config.ref.maxDocumentBytes = 64 * 1024 * 1024;
     final engine = bindings.engineCreate(config);
@@ -107,7 +105,8 @@ class CodeCore {
     _ensureAlive();
     final languageId = findLanguage(language);
     if (languageId == null) {
-      throw ArgumentError.value(language, 'language', 'unknown CodeCore language');
+      throw ArgumentError.value(
+          language, 'language', 'unknown CodeCore language');
     }
     final options = _bindings
         .allocate(sizeOf<CcDocumentOptions>())
@@ -123,6 +122,20 @@ class CodeCore {
       throw const CodeCoreException(5, 'document creation failed');
     }
     return CodeCoreDocument._(this, handle);
+  }
+
+  /// True when a Tree-sitter grammar is bundled for [language].
+  ///
+  /// The lexical tokenizer works for every registered language; structural
+  /// syntax is limited to the grammars compiled into the native library.
+  bool supportsStructuralSyntax(String language) {
+    _ensureAlive();
+    final pointer = _bindings.allocateUtf8(language);
+    try {
+      return _bindings.syntaxLanguageSupported(pointer) != 0;
+    } finally {
+      _bindings.freePointer(pointer);
+    }
   }
 
   /// Opens an LSP client that shares this process's native library.
@@ -164,9 +177,11 @@ class CodeCore {
         '../build/native/libcodecore.dll',
       ]);
     } else if (Platform.isMacOS) {
-      candidates.addAll(<String>['libcodecore.dylib', 'build/native/libcodecore.dylib']);
+      candidates.addAll(
+          <String>['libcodecore.dylib', 'build/native/libcodecore.dylib']);
     } else {
-      candidates.addAll(<String>['libcodecore.so', 'build/native/libcodecore.so']);
+      candidates
+          .addAll(<String>['libcodecore.so', 'build/native/libcodecore.so']);
     }
 
     final errors = <String>[];
@@ -291,7 +306,8 @@ class CodeCoreDocument {
       return null;
     }
     final lengthPointer = _bindings.allocate(sizeOf<IntPtr>()).cast<IntPtr>();
-    final textPointer = _bindings.documentGetProposedText(_handle, lengthPointer);
+    final textPointer =
+        _bindings.documentGetProposedText(_handle, lengthPointer);
     try {
       if (textPointer == nullptr) {
         return '';
@@ -483,7 +499,8 @@ class CodeCoreDocument {
     final pointer = _bindings.allocate(encoded.length + 1);
     pointer.asTypedList(encoded.length).setAll(0, encoded);
     try {
-      _check(_bindings.documentInsert(_handle, offset, pointer, encoded.length));
+      _check(
+          _bindings.documentInsert(_handle, offset, pointer, encoded.length));
     } finally {
       _bindings.freePointer(pointer);
     }
@@ -500,7 +517,8 @@ class CodeCoreDocument {
     final pointer = _bindings.allocate(encoded.length + 1);
     pointer.asTypedList(encoded.length).setAll(0, encoded);
     try {
-      _check(_bindings.documentReplace(_handle, start, end, pointer, encoded.length));
+      _check(_bindings.documentReplace(
+          _handle, start, end, pointer, encoded.length));
     } finally {
       _bindings.freePointer(pointer);
     }
@@ -583,7 +601,8 @@ class CodeCoreDocument {
     _ensureAlive();
     final pointer = _bindings.allocate(sizeOf<IntPtr>()).cast<IntPtr>();
     try {
-      _check(_bindings.documentPositionToOffset(_handle, line, column, pointer));
+      _check(
+          _bindings.documentPositionToOffset(_handle, line, column, pointer));
       return pointer.value;
     } finally {
       _bindings.freePointer(pointer);
@@ -618,7 +637,8 @@ class CodeCoreDocument {
 
   Selection cursorAt(int index) {
     _ensureAlive();
-    final pointer = _bindings.allocate(sizeOf<CcSelection>()).cast<CcSelection>();
+    final pointer =
+        _bindings.allocate(sizeOf<CcSelection>()).cast<CcSelection>();
     try {
       _check(_bindings.documentCursorAt(_handle, index, pointer));
       final value = pointer.ref;
@@ -689,9 +709,8 @@ class CodeCoreDocument {
   List<TokenSpan> tokenize({int start = 0, int? end}) {
     _ensureAlive();
     final actualEnd = end ?? length;
-    final slot = _bindings
-        .allocate(sizeOf<Pointer<CcToken>>())
-        .cast<Pointer<CcToken>>();
+    final slot =
+        _bindings.allocate(sizeOf<Pointer<CcToken>>()).cast<Pointer<CcToken>>();
     final count = _bindings.documentTokenize(_handle, start, actualEnd, slot);
     final pointer = slot.value;
     final tokens = <TokenSpan>[];
@@ -711,6 +730,20 @@ class CodeCoreDocument {
       _bindings.freePointer(slot);
     }
     return tokens;
+  }
+
+  /// Parses the current version with Tree-sitter and returns an owned tree.
+  ///
+  /// Returns null when the document's language has no bundled grammar. The
+  /// tree is an immutable snapshot of this version; call [SyntaxTree.dispose]
+  /// when done. Repeated calls on an unchanged version reuse the native tree.
+  SyntaxTree? syntaxTree() {
+    _ensureAlive();
+    final handle = _bindings.documentSyntaxTree(_handle);
+    if (handle == nullptr) {
+      return null;
+    }
+    return SyntaxTree._(_bindings, handle);
   }
 
   List<CompletionItem> complete([int? offset]) {
@@ -810,16 +843,14 @@ class CodeCoreDocument {
     final queryBytes = utf8.encode(query);
     final queryPointer = _bindings.allocate(queryBytes.length + 1);
     queryPointer.asTypedList(queryBytes.length).setAll(0, queryBytes);
-    final options = _bindings
-        .allocate(sizeOf<CcSearchOptions>())
-        .cast<CcSearchOptions>();
+    final options =
+        _bindings.allocate(sizeOf<CcSearchOptions>()).cast<CcSearchOptions>();
     options.ref.structSize = sizeOf<CcSearchOptions>();
     options.ref.caseSensitive = caseSensitive ? 1 : 0;
     options.ref.wholeWord = wholeWord ? 1 : 0;
     options.ref.regex = regex ? 1 : 0;
-    final slot = _bindings
-        .allocate(sizeOf<Pointer<CcRange>>())
-        .cast<Pointer<CcRange>>();
+    final slot =
+        _bindings.allocate(sizeOf<Pointer<CcRange>>()).cast<Pointer<CcRange>>();
     final countSlot = _bindings.allocate(sizeOf<IntPtr>()).cast<IntPtr>();
     try {
       final status = _bindings.documentSearch(
@@ -912,6 +943,112 @@ class CodeCoreDocument {
   void _ensureAlive() {
     if (_disposed) {
       throw StateError('CodeCoreDocument has been disposed');
+    }
+  }
+}
+
+/// A structural syntax tree produced by Tree-sitter.
+///
+/// The tree is immutable and snapshots one document version. It owns native
+/// memory and must be disposed. Highlights and errors are read on demand; they
+/// are not cached by this wrapper.
+class SyntaxTree {
+  SyntaxTree._(this._bindings, this._handle);
+
+  final CodeCoreBindings _bindings;
+  final Pointer<Void> _handle;
+  bool _disposed = false;
+
+  /// Grammar id, for example `python`.
+  String get language {
+    _ensureAlive();
+    return _bindings.readCString(_bindings.syntaxTreeLanguage(_handle));
+  }
+
+  /// Root node type, for example `module` for Python.
+  String get rootType {
+    _ensureAlive();
+    return _bindings.readCString(_bindings.syntaxTreeRootType(_handle));
+  }
+
+  int get nodeCount {
+    _ensureAlive();
+    return _bindings.syntaxTreeNodeCount(_handle);
+  }
+
+  bool get hasErrors {
+    _ensureAlive();
+    return _bindings.syntaxTreeHasErrors(_handle) != 0;
+  }
+
+  /// Structural highlights in source order.
+  List<SyntaxHighlight> get highlights {
+    _ensureAlive();
+    final count = _bindings.syntaxTreeHighlightCount(_handle);
+    final slot = _bindings
+        .allocate(sizeOf<CcSyntaxHighlight>())
+        .cast<CcSyntaxHighlight>();
+    final result = <SyntaxHighlight>[];
+    try {
+      for (var index = 0; index < count; index += 1) {
+        if (_bindings.syntaxTreeHighlightAt(_handle, index, slot) == 0) {
+          continue;
+        }
+        final value = slot.ref;
+        result.add(SyntaxHighlight(
+          start: value.start,
+          end: value.end,
+          kind: TokenKind.fromNative(value.kind),
+          capture: _bindings.readCString(value.capture),
+        ));
+      }
+    } finally {
+      _bindings.freePointer(slot);
+    }
+    return result;
+  }
+
+  /// `ERROR` and `MISSING` nodes in source order.
+  List<SyntaxError> get errors {
+    _ensureAlive();
+    final count = _bindings.syntaxTreeErrorCount(_handle);
+    final slot =
+        _bindings.allocate(sizeOf<CcSyntaxError>()).cast<CcSyntaxError>();
+    final result = <SyntaxError>[];
+    try {
+      for (var index = 0; index < count; index += 1) {
+        if (_bindings.syntaxTreeErrorAt(_handle, index, slot) == 0) {
+          continue;
+        }
+        final value = slot.ref;
+        result.add(SyntaxError(
+          start: value.start,
+          end: value.end,
+          startLine: value.startRow,
+          startColumn: value.startColumn,
+          endLine: value.endRow,
+          endColumn: value.endColumn,
+          missing: value.missing != 0,
+          nodeType: _bindings.readCString(value.nodeType),
+        ));
+      }
+    } finally {
+      _bindings.freePointer(slot);
+    }
+    return result;
+  }
+
+  void dispose() {
+    if (_disposed) {
+      return;
+    }
+    _disposed = true;
+    _bindings.syntaxTreeDestroy(_handle);
+  }
+
+  void _ensureAlive() {
+    if (_disposed) {
+      throw StateError('SyntaxTree has been disposed');
     }
   }
 }

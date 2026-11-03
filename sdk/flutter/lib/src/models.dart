@@ -289,6 +289,57 @@ class GhostText {
   final EditOrigin origin;
 }
 
+/// One structural highlight from a Tree-sitter tree.
+///
+/// [start] and [end] are UTF-8 byte offsets. [capture] is the grammar capture
+/// name (for example `keyword`, `function` or `string`).
+class SyntaxHighlight {
+  const SyntaxHighlight({
+    required this.start,
+    required this.end,
+    required this.kind,
+    required this.capture,
+  });
+
+  final int start;
+  final int end;
+  final TokenKind kind;
+  final String capture;
+
+  @override
+  String toString() => 'SyntaxHighlight($start..$end, $capture)';
+}
+
+/// An `ERROR` or `MISSING` node reported by Tree-sitter.
+///
+/// Rows are zero-based. Columns are bytes within the row, matching Tree-sitter,
+/// not Unicode code points.
+class SyntaxError {
+  const SyntaxError({
+    required this.start,
+    required this.end,
+    required this.startLine,
+    required this.startColumn,
+    required this.endLine,
+    required this.endColumn,
+    required this.missing,
+    required this.nodeType,
+  });
+
+  final int start;
+  final int end;
+  final int startLine;
+  final int startColumn;
+  final int endLine;
+  final int endColumn;
+  final bool missing;
+  final String nodeType;
+
+  @override
+  String toString() =>
+      'SyntaxError($nodeType at $startLine:$startColumn, missing: $missing)';
+}
+
 /// One line of a line-oriented diff. A missing side is represented by -1.
 class DiffLine {
   const DiffLine({
