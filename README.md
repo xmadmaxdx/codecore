@@ -13,7 +13,7 @@ editor-widget milestone, which does not exist yet.
 
 - Tree-sitter integration: a vendored C runtime and Python grammar, incremental
   reparse from the previous tree, structural highlights and real syntax errors,
-  exposed through a new C ABI surface and the Dart SDK.
+  exposed through the C ABI, Dart SDK and Kotlin SDK.
 - Incremental line indexing, versioned analysis caches and immutable snapshots.
 - Agent-facing editing: edit origins, proposed content with line diffs, atomic
   accept/reject, host-provided ghost text with partial acceptance, and snapshot
@@ -49,7 +49,7 @@ Implemented and tested:
 | Viewport visible-range geometry with overscan | Implemented, tested |
 | LSP client (framing, lifecycle, sync, completion, hover, definition, references, symbols, rename, formatting, code actions, diagnostics) | Implemented across the C ABI, Dart and Kotlin; tested |
 | 23 language definitions and lexical tokens | Implemented, tested |
-| Tree-sitter structural syntax (Python grammar) | Implemented in the core, C ABI and Dart SDK; 137 native checks and 17 Dart checks, 0 failures |
+| Tree-sitter structural syntax (Python grammar) | Implemented in the core, C ABI, Dart and Kotlin SDKs; 137 native, 17 Dart and 14 JNI checks, 0 failures |
 | Keyword / symbol / builtin completion | Implemented, tested |
 | Bracket and unterminated-literal diagnostics | Implemented, tested |
 | Brace and block-comment folding | Implemented, tested |
@@ -59,7 +59,7 @@ Implemented and tested:
 | Proposed changes, bounded line diff, atomic accept/reject | Implemented, tested |
 | Ghost-text state, partial acceptance, dismissal | Implemented, tested |
 | Dart FFI SDK | Implemented, tested; includes structural syntax |
-| Kotlin JNI bridge | Compiled; Java harness covers the document surface and LSP lifecycle (98 checks) |
+| Kotlin JNI bridge | Compiled; Java harness covers documents, structural syntax and LSP (112 checks) |
 | Flutter Android plugin build | Added; builds the same native sources; not built inside a Flutter app here |
 
 Not implemented yet — see [docs/status.md](docs/status.md):
@@ -67,7 +67,6 @@ Not implemented yet — see [docs/status.md](docs/status.md):
 - Incremental tokenization; analysis is cached per version and offloaded to a
   worker, but an edited document is still re-lexed from the start.
 - Tree-sitter grammars beyond Python; Python is the only bundled parser.
-- Structural syntax in the Kotlin SDK; the C ABI and Dart SDK expose it today.
 - Language-server process/socket managers and bundled servers (hosts own the
   transport; CodeCore ships the protocol client only).
 - Semantic intelligence independent of LSP.
@@ -150,7 +149,7 @@ version or update `ndkVersion` in `sdk/kotlin/build.gradle.kts`.
 | CTest | 4/4 passed |
 | Dart static analysis | No issues |
 | Dart FFI smoke test | **99 checks, 0 failures** |
-| JNI smoke test (Java) | **98 checks, 0 failures** |
+| JNI smoke test (Java) | **112 checks, 0 failures** |
 | Kotlin module compile | `gradlew.bat :assembleDebug` — **BUILD SUCCESSFUL**, debug AAR produced (NDK 28.2.13676358) |
 | Android native build | `libcodecore_jni.so` built for arm64-v8a, armeabi-v7a, x86 and x86_64 with `tree_sitter_python` linked in |
 | Benchmark | Manual harness exists; no speed target is claimed |

@@ -4,9 +4,8 @@ Module: `sdk/kotlin`
 JNI bridge: `native/jni/codecore_jni.cpp`  
 Native build: `native/android/CMakeLists.txt`
 
-Structural syntax (Tree-sitter highlights and syntax errors) is currently
-available through the C ABI and the Dart SDK. The Kotlin SDK still exposes
-lexical tokens; the JNI syntax bindings are the next SDK step.
+Structural syntax (Tree-sitter highlights and syntax errors) is exposed through
+`CodeCoreDocument.syntaxTree()` for languages with a bundled grammar.
 
 ## Design
 
@@ -58,8 +57,8 @@ javac -d build/jni/classes \
 java -Djava.library.path=build/jni -cp build/jni/classes JniSmokeTest
 ```
 
-Result: **74 checks, 0 failures**. The Java harness uses the same JNI symbols the
-Kotlin object declares.
+Result: **112 checks, 0 failures**. The Java harness uses the same JNI symbols
+the Kotlin object declares, including structural syntax.
 
 ## Usage
 
@@ -94,6 +93,38 @@ document.tokenize().forEach { token ->
 document.close()
 ```
 
+## Structural syntax
+
+Tree-sitter is bundled for `python` only. `syntaxTree()` returns `null` for a
+language without a grammar; lexical tokens still work for every language.
+
+```kotlin
+if (CodeCore.supportsStructuralSyntax("python")) {
+    val tree = document.syntaxTree()
+    if (tree != null) {
+        println(tree.rootType)   // module
+        println(tree.nodeCount)
+        println(tree.hasErrors)  // ERROR / MISSING nodes present
+
+        tree.highlights().forEach { highlight ->
+            println("${highlight.start}..${highlight.end} ${highlight.capture}")
+        }
+        tree.errors().forEach { error ->
+            println("${error.nodeType} at ${error.startLine}:${error.startColumn}")
+        }
+        tree.close()
+    }
+}
+```
+
+- `start`/`end` are UTF-8 byte offsets. Columns are bytes within the row,
+  matching Tree-sitter, not Unicode code points.
+- A tree snapshots one document version and owns native memory. Close it when
+  done.
+- Repeated `syntaxTree()` calls on an unchanged version reuse the native tree;
+  edits reparse incrementally from the previous tree.
+- Highlights are structural, not semantic. There is no name or type resolution.
+
 ## Agent-facing API
 
 ```kotlin
@@ -127,7 +158,8 @@ closed.
 
 ## API surface
 
-- `CodeCore.version`, `CodeCore.createDocument`, `CodeCore.createLsp`
+- `CodeCore.version`, `CodeCore.createDocument`, `CodeCore.createLsp`,
+  `CodeCore.supportsStructuralSyntax`
 - `CodeCoreLsp`: `initialize`, `feed`, `takeOutgoing`, `takeResult`,
   `takeDiagnostics`, `isInitialized`, `serverCapabilities`, `lastError`,
   `didOpen`, `didChange`, `didClose`, `didSave`, `request`, `notify`, `cancel`,
@@ -141,6 +173,8 @@ closed.
 - `insertAtCursors`, `eraseAtCursors` (one undoable transaction each)
 - `tokenize`, `complete`, `diagnose`, `find(query, caseSensitive, wholeWord,
   regex)`, `foldingRanges`, `matchBracket`
+- `syntaxTree`, `SyntaxTree`: `language`, `rootType`, `nodeCount`, `hasErrors`,
+  `highlights`, `errors`, `close`
 - Invalid regex patterns throw `CodeCoreException` (status 1) instead of
   returning an empty list
 - `setProposal`, `proposal`, `proposalDiff`, `acceptProposal`, `rejectProposal`,
@@ -201,4 +235,5 @@ are provided. Results are raw JSON and `LspResult.isError` marks error replies.
 - Regex search uses native ECMAScript semantics and is capped at 10,000
   matches; pathological patterns are not sandboxed.
 - No editor rendering, theme integration, or lifecycle-aware controller.
+- Structural syntax is Python-only; other languages use the lexical tokenizer.
 - No semantic intelligence or execution.

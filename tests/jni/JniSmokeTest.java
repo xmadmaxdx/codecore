@@ -65,6 +65,28 @@ public final class JniSmokeTest {
         check(contains(tokens, 2), "keyword token");
         check(contains(tokens, 6), "number token");
 
+        check(NativeCodeCore.nativeSyntaxLanguageSupported("python"), "python grammar");
+        check(!NativeCodeCore.nativeSyntaxLanguageSupported("javascript"),
+                "javascript has no bundled grammar");
+        long syntax = NativeCodeCore.nativeSyntaxTree(document);
+        check(syntax != 0L, "syntax tree");
+        check("python".equals(NativeCodeCore.nativeSyntaxLanguage(syntax)), "syntax language");
+        check("module".equals(NativeCodeCore.nativeSyntaxRootType(syntax)), "syntax root");
+        check(NativeCodeCore.nativeSyntaxNodeCount(syntax) > 10, "syntax node count");
+        check(!NativeCodeCore.nativeSyntaxHasErrors(syntax), "valid syntax has no errors");
+        String[] highlights = NativeCodeCore.nativeSyntaxHighlights(syntax);
+        check(highlights.length > 0, "syntax highlights");
+        boolean keywordHighlight = false;
+        for (String line : highlights) {
+            if (line.endsWith("\u001Fkeyword")) {
+                keywordHighlight = true;
+                break;
+            }
+        }
+        check(keywordHighlight, "keyword syntax highlight");
+        check(NativeCodeCore.nativeSyntaxErrors(syntax).length == 0, "empty syntax errors");
+        NativeCodeCore.nativeSyntaxTreeDestroy(syntax);
+
         String[] completions = NativeCodeCore.nativeComplete(document, source.length());
         check(completions.length > 0, "completion results");
         boolean foundTotal = false;
@@ -98,6 +120,7 @@ public final class JniSmokeTest {
         check(NativeCodeCore.nativeSetText(script, scriptSource) == 0, "set script");
         int[] folds = NativeCodeCore.nativeFoldingRanges(script);
         check(folds.length >= 6 && folds.length % 3 == 0, "folding ranges");
+        check(NativeCodeCore.nativeSyntaxTree(script) == 0L, "no grammar means no tree");
         check(NativeCodeCore.nativeMatchBracket(script, 17) == 50, "bracket match");
         NativeCodeCore.nativeDestroy(script);
 
@@ -105,6 +128,13 @@ public final class JniSmokeTest {
         NativeCodeCore.nativeSetText(broken, "def f(:\n    pass\n");
         String[] diagnostics = NativeCodeCore.nativeDiagnose(broken);
         check(diagnostics.length > 0, "broken code diagnostics");
+        long brokenSyntax = NativeCodeCore.nativeSyntaxTree(broken);
+        check(brokenSyntax != 0L, "broken code still produces a tree");
+        check(NativeCodeCore.nativeSyntaxHasErrors(brokenSyntax),
+                "broken code reports syntax errors");
+        check(NativeCodeCore.nativeSyntaxErrors(brokenSyntax).length > 0,
+                "broken code syntax error list");
+        NativeCodeCore.nativeSyntaxTreeDestroy(brokenSyntax);
         NativeCodeCore.nativeDestroy(broken);
 
         long agent = NativeCodeCore.nativeCreate("python", 4, true);

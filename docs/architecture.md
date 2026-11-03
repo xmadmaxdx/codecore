@@ -279,8 +279,10 @@ not a replacement for the CodeCore document model or completion engine.
   into the package or a prebuilt AAR.
 - **Kotlin** (`sdk/kotlin`): JNI bridge with explicit UTF-8/UTF-16 conversion.
   The Gradle wrapper and NDK version are included. `:assembleDebug` compiles the
-  Kotlin SDK and native sources into a debug AAR. `CodeCoreLsp` exposes the same
-  protocol surface; the JNI bridge is smoke-tested through a Java harness.
+  Kotlin SDK and native sources into a debug AAR. `SyntaxTree` exposes
+  structural highlights and syntax errors for bundled grammars. `CodeCoreLsp`
+  exposes the same protocol surface; the JNI bridge is smoke-tested through a
+  Java harness.
 
 ## Why these choices
 

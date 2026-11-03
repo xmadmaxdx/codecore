@@ -32,7 +32,7 @@ covered by the verification below; it does not imply production hardening.
 | Brackets | Matching bracket lookup, bracket-aware diagnostics |
 | Languages | 23 language definitions with comments, strings, keywords, types, builtins |
 | Syntax | Lexical tokens for comments, strings, numbers, keywords, tags, attributes, CSS properties |
-| Structural syntax | Tree-sitter runtime plus Python grammar, incremental reparse, structural highlights, syntax errors, node lookup. Core, C ABI and Dart SDK. |
+| Structural syntax | Tree-sitter runtime plus Python grammar, incremental reparse, structural highlights, syntax errors, node lookup. Core, C ABI, Dart and Kotlin SDKs. |
 | Completion | Keywords, types, builtins, document symbols; prefix filter, ranking, 100-item cap |
 | Diagnostics | Unmatched/unclosed brackets, unterminated strings and block comments |
 | Folding | Brace ranges, multi-line comment ranges |
@@ -45,7 +45,7 @@ covered by the verification below; it does not imply production hardening.
 | C ABI | Opaque handles, explicit ownership, allocation/free functions, language metadata |
 | Dart SDK | FFI loader, documents, editing, tokens, structural syntax, completion, diagnostics, folding, find, proposals, ghost text, snapshots, change listener, LSP client |
 | JNI bridge | Compiled; Java harness covers the Kotlin-visible surface |
-| Kotlin SDK | Selection, cursor, multi-cursor, language switching, change listeners, proposals, ghost text, snapshots and an LSP client |
+| Kotlin SDK | Selection, cursor, multi-cursor, language switching, change listeners, proposals, ghost text, snapshots, structural syntax and an LSP client |
 
 ## Verification performed
 
@@ -63,7 +63,7 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 | Dart analyze | `dart analyze` in `sdk/flutter` | No issues |
 | Dart FFI smoke | `dart run tool/smoke_test.dart` | **99 checks, 0 failures** |
 | JNI build | `cmake --build build/native -DCODECORE_BUILD_JNI=ON` | Success |
-| JNI smoke | `java -Djava.library.path=build/native -cp build/jni-test JniSmokeTest` | **98 checks, 0 failures** |
+| JNI smoke | `java -Djava.library.path=build/native -cp build/jni-test JniSmokeTest` | **112 checks, 0 failures** |
 | Kotlin Gradle build | `gradlew.bat :assembleDebug` | **BUILD SUCCESSFUL**; Kotlin and Android/JNI sources compiled, debug AAR produced |
 | Android native build | `libcodecore_jni.so` for 4 ABIs | `tree_sitter_python` and `ts_parser_parse_string` linked in |
 | LSP SDK surface | `dart analyze`, `gradlew.bat :assembleDebug` | Clean / BUILD SUCCESSFUL |
@@ -83,7 +83,6 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 Do not treat any of these as available:
 
 - Tree-sitter grammars beyond Python; no grammar loader or grammar package yet.
-- Structural syntax in the Kotlin SDK; the C ABI and Dart SDK expose it.
 - Language-server process, pipe and socket managers; no server is bundled.
 - Semantic intelligence independent of LSP.
 - AI model providers, prompt orchestration, agent loops, chat, multi-file edits.
@@ -131,14 +130,11 @@ Do not treat any of these as available:
 11. **Tree-sitter is Python-only.** The grammar is compiled in; adding another
     language means vendoring its generated parser and highlight query. There is
     no runtime grammar package or download path yet.
-12. **Kotlin has no structural syntax yet.** The C ABI and Dart SDK expose
-    syntax trees, highlights and syntax errors; the Kotlin SDK still exposes
-    lexical tokens only.
-13. **Tree traversal is per call.** `nodeCount()`, highlights and errors walk or
+12. **Tree traversal is per call.** `nodeCount()`, highlights and errors walk or
     query the tree each time a syntax handle is built. The tree itself is cached
     per document version and reparsed incrementally, but the handle is not a
     per-frame render cache.
-14. **LSP is transport-only.** The C ABI, Dart and Kotlin clients handle
+13. **LSP is transport-only.** The C ABI, Dart and Kotlin clients handle
     protocol framing, lifecycle, requests and diagnostics, but the host owns
     the process/socket. Document sync is full-text, positions use UTF-16
     coordinates, frames are capped at 16 MB and no language server is bundled.

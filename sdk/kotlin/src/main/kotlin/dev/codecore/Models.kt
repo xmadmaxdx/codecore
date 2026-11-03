@@ -150,6 +150,30 @@ data class DiffLine(
     val text: String,
 )
 
+data class SyntaxHighlight(
+    val start: Int,
+    val end: Int,
+    val kind: TokenKind,
+    val capture: String,
+)
+
+/**
+ * An `ERROR` or `MISSING` node from Tree-sitter.
+ *
+ * Rows are zero-based. Columns are bytes within the row, matching Tree-sitter,
+ * not Unicode code points.
+ */
+data class CodeCoreSyntaxError(
+    val start: Int,
+    val end: Int,
+    val startLine: Int,
+    val startColumn: Int,
+    val endLine: Int,
+    val endColumn: Int,
+    val missing: Boolean,
+    val nodeType: String,
+)
+
 data class CodeCoreToken(
     val start: Int,
     val end: Int,

@@ -315,6 +315,17 @@ class CodeCoreDocument internal constructor(initialHandle: Long) : AutoCloseable
         }
     }
 
+    /**
+     * Parses the current version with Tree-sitter and returns an owned tree.
+     *
+     * Returns null when the document's language has no bundled grammar. The
+     * tree is an immutable snapshot of this version; close it when done.
+     */
+    fun syntaxTree(): SyntaxTree? = synchronized(lock) {
+        val tree = NativeCodeCore.nativeSyntaxTree(nativeHandle())
+        if (tree == 0L) null else SyntaxTree(tree)
+    }
+
     fun complete(offset: Int = -1): List<CompletionItem> {
         synchronized(lock) {
             val target = nativeHandle()

@@ -73,6 +73,33 @@ object NativeCodeCore {
     external fun nativeTokenize(handle: Long, start: Int, end: Int): IntArray
 
     @JvmStatic
+    external fun nativeSyntaxLanguageSupported(language: String): Boolean
+
+    @JvmStatic
+    external fun nativeSyntaxTree(handle: Long): Long
+
+    @JvmStatic
+    external fun nativeSyntaxTreeDestroy(tree: Long)
+
+    @JvmStatic
+    external fun nativeSyntaxLanguage(tree: Long): String
+
+    @JvmStatic
+    external fun nativeSyntaxRootType(tree: Long): String
+
+    @JvmStatic
+    external fun nativeSyntaxNodeCount(tree: Long): Int
+
+    @JvmStatic
+    external fun nativeSyntaxHasErrors(tree: Long): Boolean
+
+    @JvmStatic
+    external fun nativeSyntaxHighlights(tree: Long): Array<String>
+
+    @JvmStatic
+    external fun nativeSyntaxErrors(tree: Long): Array<String>
+
+    @JvmStatic
     external fun nativeComplete(handle: Long, offset: Int): Array<String>
 
     @JvmStatic

@@ -24,6 +24,15 @@ object CodeCore {
         return CodeCoreDocument(handle)
     }
 
+    /**
+     * True when a Tree-sitter grammar is bundled for [language].
+     *
+     * The lexical tokenizer works for every registered language; structural
+     * syntax is limited to the grammars compiled into the native library.
+     */
+    fun supportsStructuralSyntax(language: String): Boolean =
+        NativeCodeCore.nativeSyntaxLanguageSupported(language)
+
     /** Opens an LSP client. The host owns the language-server transport. */
     fun createLsp(): CodeCoreLsp = CodeCoreLsp.open()
 }

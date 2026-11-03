@@ -55,6 +55,24 @@ public final class NativeCodeCore {
 
     public static native int[] nativeTokenize(long handle, int start, int end);
 
+    public static native boolean nativeSyntaxLanguageSupported(String language);
+
+    public static native long nativeSyntaxTree(long handle);
+
+    public static native void nativeSyntaxTreeDestroy(long tree);
+
+    public static native String nativeSyntaxLanguage(long tree);
+
+    public static native String nativeSyntaxRootType(long tree);
+
+    public static native int nativeSyntaxNodeCount(long tree);
+
+    public static native boolean nativeSyntaxHasErrors(long tree);
+
+    public static native String[] nativeSyntaxHighlights(long tree);
+
+    public static native String[] nativeSyntaxErrors(long tree);
+
     public static native String[] nativeComplete(long handle, int offset);
 
     public static native String[] nativeDiagnose(long handle);

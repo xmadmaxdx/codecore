@@ -35,6 +35,10 @@ cc_snapshot* snapshotFrom(jlong handle) {
   return reinterpret_cast<cc_snapshot*>(static_cast<intptr_t>(handle));
 }
 
+cc_syntax_tree* syntaxTreeFrom(jlong handle) {
+  return reinterpret_cast<cc_syntax_tree*>(static_cast<intptr_t>(handle));
+}
+
 cc_lsp_client* lspFrom(jlong handle) {
   return reinterpret_cast<cc_lsp_client*>(static_cast<intptr_t>(handle));
 }
@@ -233,6 +237,36 @@ std::string diagnosticLine(const cc_diagnostic& diagnostic) {
   line += diagnostic.message ? diagnostic.message : "";
   line.push_back(kFieldSeparator);
   line += diagnostic.source ? diagnostic.source : "";
+  return line;
+}
+
+std::string syntaxHighlightLine(const cc_syntax_highlight& highlight) {
+  std::string line = std::to_string(highlight.start);
+  line.push_back(kFieldSeparator);
+  line += std::to_string(highlight.end);
+  line.push_back(kFieldSeparator);
+  line += std::to_string(highlight.kind);
+  line.push_back(kFieldSeparator);
+  line += highlight.capture ? highlight.capture : "";
+  return line;
+}
+
+std::string syntaxErrorLine(const cc_syntax_error& error) {
+  std::string line = std::to_string(error.start);
+  line.push_back(kFieldSeparator);
+  line += std::to_string(error.end);
+  line.push_back(kFieldSeparator);
+  line += std::to_string(error.start_row);
+  line.push_back(kFieldSeparator);
+  line += std::to_string(error.start_column);
+  line.push_back(kFieldSeparator);
+  line += std::to_string(error.end_row);
+  line.push_back(kFieldSeparator);
+  line += std::to_string(error.end_column);
+  line.push_back(kFieldSeparator);
+  line += error.missing ? "1" : "0";
+  line.push_back(kFieldSeparator);
+  line += error.node_type ? error.node_type : "";
   return line;
 }
 
@@ -438,6 +472,83 @@ Java_dev_codecore_nativebridge_NativeCodeCore_nativeTokenize(JNIEnv* env, jclass
   }
   cc_tokens_free(tokens);
   return intArray(env, packed);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSyntaxLanguageSupported(JNIEnv* env, jclass,
+                                                                         jstring language) {
+  const std::string value = javaStringToUtf8(env, language);
+  return cc_syntax_language_supported(value.c_str()) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jlong JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSyntaxTree(JNIEnv*, jclass, jlong handle) {
+  return static_cast<jlong>(
+      reinterpret_cast<intptr_t>(cc_document_syntax_tree(documentFrom(handle))));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSyntaxTreeDestroy(JNIEnv*, jclass,
+                                                                     jlong tree) {
+  cc_syntax_tree_destroy(syntaxTreeFrom(tree));
+}
+
+JNIEXPORT jstring JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSyntaxLanguage(JNIEnv* env, jclass,
+                                                                  jlong tree) {
+  return toJavaString(env, cc_syntax_tree_language(syntaxTreeFrom(tree)));
+}
+
+JNIEXPORT jstring JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSyntaxRootType(JNIEnv* env, jclass,
+                                                                  jlong tree) {
+  return toJavaString(env, cc_syntax_tree_root_type(syntaxTreeFrom(tree)));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSyntaxNodeCount(JNIEnv*, jclass,
+                                                                   jlong tree) {
+  return static_cast<jint>(cc_syntax_tree_node_count(syntaxTreeFrom(tree)));
+}
+
+JNIEXPORT jboolean JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSyntaxHasErrors(JNIEnv*, jclass,
+                                                                   jlong tree) {
+  return cc_syntax_tree_has_errors(syntaxTreeFrom(tree)) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSyntaxHighlights(JNIEnv* env, jclass,
+                                                                    jlong tree) {
+  cc_syntax_tree* syntax = syntaxTreeFrom(tree);
+  const size_t count = cc_syntax_tree_highlight_count(syntax);
+  std::vector<std::string> lines;
+  lines.reserve(count);
+  for (size_t index = 0; index < count; ++index) {
+    cc_syntax_highlight highlight{};
+    if (!cc_syntax_tree_highlight_at(syntax, index, &highlight)) {
+      continue;
+    }
+    lines.push_back(syntaxHighlightLine(highlight));
+  }
+  return stringArray(env, lines);
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeSyntaxErrors(JNIEnv* env, jclass,
+                                                                jlong tree) {
+  cc_syntax_tree* syntax = syntaxTreeFrom(tree);
+  const size_t count = cc_syntax_tree_error_count(syntax);
+  std::vector<std::string> lines;
+  lines.reserve(count);
+  for (size_t index = 0; index < count; ++index) {
+    cc_syntax_error error{};
+    if (!cc_syntax_tree_error_at(syntax, index, &error)) {
+      continue;
+    }
+    lines.push_back(syntaxErrorLine(error));
+  }
+  return stringArray(env, lines);
 }
 
 JNIEXPORT jobjectArray JNICALL
