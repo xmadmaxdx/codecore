@@ -129,6 +129,8 @@ closed.
   `canRedo`
 - `insert`, `erase`, `replace`, `undo`, `redo`, `clearHistory`
 - `setSelection`, `moveCursor`, `setChangeListener`
+- `cursorCount`, `cursorAt`, `addCursor`, `clearCursors`, `moveCursors`
+- `insertAtCursors`, `eraseAtCursors` (one undoable transaction each)
 - `tokenize`, `complete`, `diagnose`, `find(query, caseSensitive, wholeWord,
   regex)`, `foldingRanges`, `matchBracket`
 - Invalid regex patterns throw `CodeCoreException` (status 1) instead of

@@ -95,6 +95,22 @@ Each edit records its offset, removed text, inserted text and `EditOrigin`.
 - Proposal acceptance and snapshot restoration compute a minimal replacement
   range and record one history entry, so each is one undo step.
 
+## Multi-cursor
+
+`Document` stores a vector of selections; index 0 is the primary selection and
+`setSelection` resets the list to one entry. `addCursor` appends a validated
+selection, and `moveCursors` computes each target independently.
+
+- `multiInsert` replaces every selection with the same text. Overlapping
+  selections merge first; duplicate collapsed carets insert once.
+- `multiErase` erases each selection, or one code point per collapsed caret,
+  with `backward` selecting backspace versus delete.
+- Edits apply from the highest offset down, so lower offsets remain valid. The
+  history record stores every primitive operation in one group, which makes
+  undo and redo a single transaction.
+- Carets are recomputed in ascending order after the edit. Change listeners see
+  one event per affected range at the same version.
+
 ## Proposed changes
 
 A proposal is stored separately from document text.

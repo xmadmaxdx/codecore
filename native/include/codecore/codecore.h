@@ -326,6 +326,19 @@ CC_API cc_status cc_document_position_to_offset(const cc_document* document, uin
 CC_API cc_selection cc_document_get_selection(const cc_document* document);
 CC_API cc_status cc_document_set_selection(cc_document* document, uint32_t anchor, uint32_t focus);
 CC_API cc_status cc_document_move_cursor(cc_document* document, uint32_t move, uint8_t extend_selection);
+
+/* Multi-cursor. Index 0 is the primary selection. */
+CC_API size_t cc_document_cursor_count(const cc_document* document);
+CC_API cc_status cc_document_cursor_at(const cc_document* document, size_t index,
+                                       cc_selection* out_selection);
+CC_API cc_status cc_document_add_cursor(cc_document* document, uint32_t anchor, uint32_t focus);
+CC_API void cc_document_clear_cursors(cc_document* document);
+CC_API cc_status cc_document_move_cursors(cc_document* document, uint32_t move,
+                                          uint8_t extend_selection);
+/* Replaces every selection with utf8 as one undoable transaction. */
+CC_API cc_status cc_document_multi_insert(cc_document* document, const char* utf8, size_t length);
+/* Erases every selection, or one code point per collapsed caret. */
+CC_API cc_status cc_document_multi_erase(cc_document* document, uint8_t backward);
 CC_API cc_status cc_document_match_bracket(const cc_document* document, size_t offset, size_t* out_match);
 
 /* Language services. Returned arrays must be freed by the caller. */

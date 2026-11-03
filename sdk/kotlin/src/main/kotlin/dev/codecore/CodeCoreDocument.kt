@@ -178,6 +178,53 @@ class CodeCoreDocument internal constructor(initialHandle: Long) : AutoCloseable
         }
     }
 
+    /** Number of selections; index 0 is the primary selection. */
+    val cursorCount: Int
+        get() = synchronized(lock) { NativeCodeCore.nativeCursorCount(nativeHandle()) }
+
+    fun cursorAt(index: Int): Selection {
+        synchronized(lock) {
+            val packed = NativeCodeCore.nativeCursorAt(nativeHandle(), index)
+            require(packed >= 0) { "cursor index $index is out of range" }
+            return Selection(
+                anchor = (packed ushr 32).toInt(),
+                focus = packed.toInt(),
+            )
+        }
+    }
+
+    fun addCursor(anchor: Int, focus: Int) {
+        synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeAddCursor(nativeHandle(), anchor, focus))
+        }
+    }
+
+    fun clearCursors() {
+        synchronized(lock) { NativeCodeCore.nativeClearCursors(nativeHandle()) }
+    }
+
+    fun moveCursors(move: CursorMove, extendSelection: Boolean = false) {
+        synchronized(lock) {
+            checkStatus(
+                NativeCodeCore.nativeMoveCursors(nativeHandle(), move.nativeValue, extendSelection),
+            )
+        }
+    }
+
+    /** Replaces every selection with [value] as one undo step. */
+    fun insertAtCursors(value: String) {
+        synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeMultiInsert(nativeHandle(), value))
+        }
+    }
+
+    /** Erases every selection, or one code point per collapsed caret. */
+    fun eraseAtCursors(backward: Boolean = true) {
+        synchronized(lock) {
+            checkStatus(NativeCodeCore.nativeMultiErase(nativeHandle(), backward))
+        }
+    }
+
     /** Installs a synchronous change listener. Pass null to detach. */
     fun setChangeListener(listener: CodeCoreChangeListener?) {
         synchronized(lock) {

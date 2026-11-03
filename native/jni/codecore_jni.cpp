@@ -704,6 +704,56 @@ Java_dev_codecore_nativebridge_NativeCodeCore_nativeMoveCursor(JNIEnv*, jclass, 
 }
 
 JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeCursorCount(JNIEnv*, jclass, jlong handle) {
+  return static_cast<jint>(cc_document_cursor_count(documentFrom(handle)));
+}
+
+JNIEXPORT jlong JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeCursorAt(JNIEnv*, jclass, jlong handle,
+                                                             jint index) {
+  cc_selection selection{};
+  if (cc_document_cursor_at(documentFrom(handle), static_cast<size_t>(index), &selection) !=
+      CC_STATUS_OK) {
+    return -1;
+  }
+  return static_cast<jlong>((static_cast<uint64_t>(selection.anchor) << 32) |
+                            static_cast<uint64_t>(selection.focus));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeAddCursor(JNIEnv*, jclass, jlong handle,
+                                                              jint anchor, jint focus) {
+  return static_cast<jint>(cc_document_add_cursor(
+      documentFrom(handle), static_cast<uint32_t>(anchor), static_cast<uint32_t>(focus)));
+}
+
+JNIEXPORT void JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeClearCursors(JNIEnv*, jclass, jlong handle) {
+  cc_document_clear_cursors(documentFrom(handle));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeMoveCursors(JNIEnv*, jclass, jlong handle,
+                                                                jint move, jboolean extend) {
+  return static_cast<jint>(cc_document_move_cursors(
+      documentFrom(handle), static_cast<uint32_t>(move), extend ? 1 : 0));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeMultiInsert(JNIEnv* env, jclass,
+                                                                jlong handle, jstring text) {
+  const std::string value = javaStringToUtf8(env, text);
+  return static_cast<jint>(
+      cc_document_multi_insert(documentFrom(handle), value.data(), value.size()));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_codecore_nativebridge_NativeCodeCore_nativeMultiErase(JNIEnv*, jclass, jlong handle,
+                                                               jboolean backward) {
+  return static_cast<jint>(cc_document_multi_erase(documentFrom(handle), backward ? 1 : 0));
+}
+
+JNIEXPORT jint JNICALL
 Java_dev_codecore_nativebridge_NativeCodeCore_nativeSetLanguage(JNIEnv*, jclass, jlong handle,
                                                                 jint languageId) {
   return static_cast<jint>(cc_document_set_language(documentFrom(handle), languageId));

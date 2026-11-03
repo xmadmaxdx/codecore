@@ -518,6 +518,61 @@ cc_status cc_document_move_cursor(cc_document* document, uint32_t move,
                                                   extend_selection != 0));
 }
 
+size_t cc_document_cursor_count(const cc_document* document) {
+  return document && document->document ? document->document->cursorCount() : 0;
+}
+
+cc_status cc_document_cursor_at(const cc_document* document, size_t index,
+                                cc_selection* out_selection) {
+  if (!document || !document->document || !out_selection) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  codecore::Selection value;
+  const cc_status status = mapStatus(document->document->cursorAt(index, &value));
+  if (status == CC_STATUS_OK) {
+    out_selection->anchor = value.anchor;
+    out_selection->focus = value.focus;
+  }
+  return status;
+}
+
+cc_status cc_document_add_cursor(cc_document* document, uint32_t anchor, uint32_t focus) {
+  if (!document || !document->document) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->addCursor(anchor, focus));
+}
+
+void cc_document_clear_cursors(cc_document* document) {
+  if (document && document->document) {
+    document->document->clearCursors();
+  }
+}
+
+cc_status cc_document_move_cursors(cc_document* document, uint32_t move,
+                                   uint8_t extend_selection) {
+  if (!document || !document->document || move > 9) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->moveCursors(static_cast<codecore::CursorMove>(move),
+                                                   extend_selection != 0));
+}
+
+cc_status cc_document_multi_insert(cc_document* document, const char* utf8, size_t length) {
+  if (!document || !document->document || (!utf8 && length > 0)) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->multiInsert(
+      std::string_view(utf8 ? utf8 : "", length)));
+}
+
+cc_status cc_document_multi_erase(cc_document* document, uint8_t backward) {
+  if (!document || !document->document) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  return mapStatus(document->document->multiErase(backward != 0));
+}
+
 cc_status cc_document_match_bracket(const cc_document* document, size_t offset,
                                     size_t* out_match) {
   if (!document || !document->document || !out_match) {

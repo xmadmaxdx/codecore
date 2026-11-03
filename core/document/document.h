@@ -89,6 +89,18 @@ class Document {
   Selection selection() const;
   Status setSelection(uint32_t anchor, uint32_t focus);
   Status moveCursor(CursorMove move, bool extendSelection);
+
+  /* Multi-cursor state. Index 0 is the primary selection. */
+  size_t cursorCount() const;
+  Status cursorAt(size_t index, Selection* out) const;
+  Status addCursor(uint32_t anchor, uint32_t focus);
+  void clearCursors();
+  Status moveCursors(CursorMove move, bool extendSelection);
+
+  /* Replaces every selection with text as one undoable transaction. */
+  Status multiInsert(std::string_view text);
+  /* Erases every selection, or one code point per collapsed caret. */
+  Status multiErase(bool backward);
   Status matchBracket(size_t offset, size_t* outMatch) const;
 
   std::vector<Token> tokenize(size_t start, size_t end) const;
@@ -107,9 +119,12 @@ class Document {
 
  private:
   struct EditRecord {
-    size_t offset = 0;
-    std::string removed;
-    std::string inserted;
+    struct Op {
+      size_t offset = 0;
+      std::string removed;
+      std::string inserted;
+    };
+    std::vector<Op> ops;
     EditOrigin origin = EditOrigin::Host;
   };
 
@@ -121,6 +136,9 @@ class Document {
                   EditOrigin origin);
   void recordEdit(size_t offset, std::string removed, std::string inserted, bool coalesce,
                   EditOrigin origin);
+  void recordEdit(std::vector<EditRecord::Op> ops, EditOrigin origin);
+  Status computeCursorTarget(const std::string& text, Selection selection, CursorMove move,
+                             bool extendSelection, size_t* outTarget) const;
   const std::string& currentText() const;
   std::shared_ptr<Analysis> currentAnalysis() const;
 
@@ -139,7 +157,7 @@ class Document {
 
   uint64_t version_ = 0;
   EditOrigin nextOrigin_ = EditOrigin::Host;
-  Selection selection_;
+  std::vector<Selection> selections_{Selection{}};
   std::string proposedText_;
   bool hasProposal_ = false;
   EditOrigin proposalOrigin_ = EditOrigin::Ai;

@@ -115,6 +115,32 @@ void main() {
     check(invalidRegexThrew, 'invalid regex throws');
     findDoc.dispose();
 
+    final multiDoc = core.createDocument(language: 'python');
+    multiDoc.text = 'one\ntwo\nthree\n';
+    multiDoc.setSelection(0, 0);
+    multiDoc.addCursor(4, 4);
+    check(multiDoc.cursorCount == 2, 'multi cursor count');
+    check(multiDoc.cursorAt(1).focus == 4, 'multi cursor offset');
+    multiDoc.insertAtCursors('# ');
+    check(multiDoc.text == '# one\n# two\nthree\n', 'multi cursor insert');
+    check(multiDoc.selection.focus == 2, 'primary caret after multi insert');
+    check(multiDoc.cursorAt(1).focus == 8, 'secondary caret after multi insert');
+    check(multiDoc.undo(), 'multi insert undo');
+    check(multiDoc.text == 'one\ntwo\nthree\n', 'multi insert undo text');
+    check(multiDoc.redo(), 'multi insert redo');
+    check(multiDoc.undo(), 'multi insert undo again');
+
+    multiDoc.setSelection(0, 3);
+    multiDoc.addCursor(4, 7);
+    multiDoc.eraseAtCursors();
+    check(multiDoc.text == '\n\nthree\n', 'multi selection erase');
+    check(multiDoc.cursorCount == 2, 'multi erase keeps cursors');
+    check(multiDoc.undo(), 'multi erase undo');
+    check(multiDoc.text == 'one\ntwo\nthree\n', 'multi erase undo text');
+    multiDoc.clearCursors();
+    check(multiDoc.cursorCount == 1, 'clear cursors');
+    multiDoc.dispose();
+
     final bracketDoc = core.createDocument(language: 'javascript');
     bracketDoc.text = 'foo(bar[1])';
     check(bracketDoc.matchBracket(3) == 10, 'matching bracket');

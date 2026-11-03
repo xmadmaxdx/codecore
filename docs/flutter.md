@@ -60,6 +60,25 @@ doc.dispose();
 Offsets are UTF-8 bytes. `document.text` converts to a Dart string; keep byte
 offsets when placing the caret.
 
+## Multi-cursor
+
+```dart
+doc.setSelection(0, 0);
+doc.addCursor(4, 4);
+
+print(doc.cursorCount);          // 2
+print(doc.cursorAt(1).focus);    // 4
+
+doc.insertAtCursors('# ');       // atomic, one undo step
+doc.moveCursors(CursorMove.wordRight);
+doc.eraseAtCursors();            // backspace at every caret
+
+doc.clearCursors();              // keep the primary
+```
+
+Overlapping selections merge before the edit. Undo and redo apply the entire
+multi-cursor edit as one entry. Change events fire once per affected range.
+
 ## Permissions and edit origin
 
 ```dart

@@ -167,6 +167,35 @@ public final class JniSmokeTest {
         check(NativeCodeCore.nativeLanguageId(agent) == 1, "language switched");
         check(NativeCodeCore.nativeSetLanguage(agent, 0) == 0, "switch language back");
 
+        NativeCodeCore.nativeSetText(agent, "one\ntwo\nthree\n");
+        check(NativeCodeCore.nativeSetSelection(agent, 0, 0) == 0, "multi primary cursor");
+        check(NativeCodeCore.nativeAddCursor(agent, 4, 4) == 0, "add cursor");
+        check(NativeCodeCore.nativeCursorCount(agent) == 2, "cursor count");
+        long second = NativeCodeCore.nativeCursorAt(agent, 1);
+        check((second >>> 32) == 4L && (second & 0xFFFFFFFFL) == 4L, "cursor at");
+        check(NativeCodeCore.nativeMultiInsert(agent, "# ") == 0, "multi insert");
+        check("# one\n# two\nthree\n".equals(NativeCodeCore.nativeGetText(agent)),
+                "multi insert text");
+        long primary = NativeCodeCore.nativeGetSelection(agent);
+        check((primary & 0xFFFFFFFFL) == 2L, "multi primary caret");
+        second = NativeCodeCore.nativeCursorAt(agent, 1);
+        check((second & 0xFFFFFFFFL) == 8L, "multi secondary caret");
+        check(NativeCodeCore.nativeUndo(agent) == 0, "multi insert undo");
+        check("one\ntwo\nthree\n".equals(NativeCodeCore.nativeGetText(agent)),
+                "multi insert undo text");
+        check(NativeCodeCore.nativeRedo(agent) == 0, "multi insert redo");
+
+        NativeCodeCore.nativeSetText(agent, "one\ntwo\nthree\n");
+        check(NativeCodeCore.nativeSetSelection(agent, 0, 3) == 0, "multi erase primary");
+        check(NativeCodeCore.nativeAddCursor(agent, 4, 7) == 0, "multi erase secondary");
+        check(NativeCodeCore.nativeMultiErase(agent, true) == 0, "multi erase");
+        check("\n\nthree\n".equals(NativeCodeCore.nativeGetText(agent)), "multi erase text");
+        check(NativeCodeCore.nativeUndo(agent) == 0, "multi erase undo");
+        check("one\ntwo\nthree\n".equals(NativeCodeCore.nativeGetText(agent)),
+                "multi erase undo text");
+        NativeCodeCore.nativeClearCursors(agent);
+        check(NativeCodeCore.nativeCursorCount(agent) == 1, "clear cursors");
+
         Listener listener = new Listener();
         NativeCodeCore.nativeSetChangeListener(agent, listener);
         check(NativeCodeCore.nativeInsert(agent, 0, "#") == 0, "listener insert");

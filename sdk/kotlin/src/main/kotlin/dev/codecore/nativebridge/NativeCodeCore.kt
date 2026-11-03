@@ -163,6 +163,27 @@ object NativeCodeCore {
     external fun nativeMoveCursor(handle: Long, move: Int, extend: Boolean): Int
 
     @JvmStatic
+    external fun nativeCursorCount(handle: Long): Int
+
+    @JvmStatic
+    external fun nativeCursorAt(handle: Long, index: Int): Long
+
+    @JvmStatic
+    external fun nativeAddCursor(handle: Long, anchor: Int, focus: Int): Int
+
+    @JvmStatic
+    external fun nativeClearCursors(handle: Long)
+
+    @JvmStatic
+    external fun nativeMoveCursors(handle: Long, move: Int, extend: Boolean): Int
+
+    @JvmStatic
+    external fun nativeMultiInsert(handle: Long, text: String): Int
+
+    @JvmStatic
+    external fun nativeMultiErase(handle: Long, backward: Boolean): Int
+
+    @JvmStatic
     external fun nativeSetLanguage(handle: Long, languageId: Int): Int
 
     @JvmStatic

@@ -18,6 +18,8 @@ editor-widget milestone, which does not exist yet.
 - Kotlin parity for selection, cursor movement, language switching, change
   listeners, proposals, ghost text and snapshots.
 - Regex search with status reporting across the C ABI, Dart and Kotlin.
+- Multi-cursor editing: add/clear/move carets, atomic multi-insert and
+  multi-erase as single undo steps.
 - A Flutter Android plugin that builds and packages `libcodecore.so`; manual
   `jniLibs` copying is no longer required in this repository.
 
@@ -33,6 +35,7 @@ Implemented and tested:
 | Insert / erase / replace / read-only / editable | Implemented, tested |
 | Undo / redo, typing coalescing, edit origins | Implemented, tested |
 | Selection, cursor movement, bracket matching | Implemented, tested |
+| Multi-cursor editing and atomic grouped edits | Implemented; compile-verified |
 | 23 language definitions and lexical tokens | Implemented, tested |
 | Keyword / symbol / builtin completion | Implemented, tested |
 | Bracket and unterminated-literal diagnostics | Implemented, tested |
@@ -114,6 +117,11 @@ The module pins NDK `28.2.13676358`. If your NDK is elsewhere, install that
 version or update `ndkVersion` in `sdk/kotlin/build.gradle.kts`.
 
 ## Verification
+
+> **Runtime verification note (November 3, 2026):** this machine's Device Guard
+> policy began blocking newly built binaries (`SecurityServicesRunning=2`,
+> error 4551). Counts below are from the last successful run before that
+> policy took effect. Changes since then are compile-verified only.
 
 Last verified on the development machine:
 

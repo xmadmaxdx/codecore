@@ -25,6 +25,7 @@ covered by the verification below; it does not imply production hardening.
 | Editing | Insert, erase, replace, UTF-8 boundary checks, read-only/editable mode |
 | Undo/redo | Inverse records, typing coalescing, history limits, edit origins |
 | Selection/cursor | Get/set selection, left/right/word/line/up/down/doc moves |
+| Multi-cursor | Add/clear/query cursors, move all carets, atomic multi-insert and multi-erase with one undo entry |
 | Brackets | Matching bracket lookup, bracket-aware diagnostics |
 | Languages | 23 language definitions with comments, strings, keywords, types, builtins |
 | Syntax | Lexical tokens for comments, strings, numbers, keywords, tags, attributes, CSS properties |
@@ -44,6 +45,11 @@ covered by the verification below; it does not imply production hardening.
 
 ## Verification performed
 
+The runtime counts below were recorded before this machine's Device Guard policy
+began blocking newly built binaries. Multi-cursor and later changes are
+compile-verified only until execution is permitted again.
+
+
 Environment: Windows, Flutter 3.47.7 / Dart 3.13.5, MinGW-w64 GCC 16.1.0,
 CMake 3.20+, JDK 21, NDK 28.2.13676358.
 
@@ -57,6 +63,7 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 | JNI build | `cmake --build build/jni` | Success |
 | JNI smoke | `java -Djava.library.path=build/jni -cp build/jni/classes JniSmokeTest` | **74 checks, 0 failures** |
 | Kotlin Gradle build | `gradlew.bat :assembleDebug` | **BUILD SUCCESSFUL**; Kotlin and Android/JNI sources compiled, debug AAR produced |
+| Multi-cursor runtime tests | Not executable | Windows Device Guard blocks newly built EXE/DLL launches (error 4551); native, Dart and Kotlin builds still succeed |
 | Flutter Android plugin | Not built on this machine | Plugin sources and CMake build are present |
 | Benchmark | `build/native/codecore_benchmark.exe` | Results recorded below; no target claimed |
 
@@ -81,7 +88,6 @@ Do not treat any of these as available:
 - Package manager, downloads, signature verification, atomic install/rollback.
 - Execution API, runtime manager, terminal, debugging, build system.
 - Project/workspace management, git integration, symbol indexing.
-- Multi-cursor editing and multi-selection API.
 - Indentation-based folding (brace and block-comment folding only).
 - Incremental tokenization; lexical analysis still scans the whole document per
   version, though unchanged versions are cached.

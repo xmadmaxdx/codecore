@@ -158,6 +158,31 @@ destroyed. They are independently queryable for text, version, language, tokens,
 completion, diagnostics, folding and find. Restoration is rejected on read-only
 documents and does not reset the undo history.
 
+## Multi-cursor
+
+Selections are a list; index 0 is the primary caret used by
+`cc_document_get_selection`.
+
+```c
+cc_document_set_selection(doc, 0, 0);
+cc_document_add_cursor(doc, 4, 4);
+
+cc_selection second = {0};
+cc_document_cursor_at(doc, 1, &second);   /* anchor=4, focus=4 */
+
+cc_document_multi_insert(doc, "# ", 2);   /* one undo entry */
+cc_document_undo(doc);                    /* restores both lines */
+
+cc_document_move_cursors(doc, CC_MOVE_WORD_RIGHT, 0);
+cc_document_multi_erase(doc, 1);          /* backspace at every caret */
+cc_document_clear_cursors(doc);           /* keep only the primary */
+```
+
+Overlapping selections merge before a multi edit. Duplicate collapsed carets
+collapse to one insertion. Multi-cursor operations emit one change event per
+affected range, all under the same document version; undo and redo apply the
+whole group as one history entry.
+
 ## Search
 
 `cc_document_find` is the original literal API and remains available. It returns

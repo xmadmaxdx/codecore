@@ -603,6 +603,62 @@ class CodeCoreDocument {
     ));
   }
 
+  /// Number of selections. Index 0 is the primary selection.
+  int get cursorCount {
+    _ensureAlive();
+    return _bindings.documentCursorCount(_handle);
+  }
+
+  Selection cursorAt(int index) {
+    _ensureAlive();
+    final pointer = _bindings.allocate(sizeOf<CcSelection>()).cast<CcSelection>();
+    try {
+      _check(_bindings.documentCursorAt(_handle, index, pointer));
+      final value = pointer.ref;
+      return Selection(anchor: value.anchor, focus: value.focus);
+    } finally {
+      _bindings.freePointer(pointer);
+    }
+  }
+
+  void addCursor(int anchor, int focus) {
+    _ensureAlive();
+    _check(_bindings.documentAddCursor(_handle, anchor, focus));
+  }
+
+  void clearCursors() {
+    _ensureAlive();
+    _bindings.documentClearCursors(_handle);
+  }
+
+  void moveCursors(CursorMove move, {bool extendSelection = false}) {
+    _ensureAlive();
+    _check(_bindings.documentMoveCursors(
+      _handle,
+      move.index,
+      extendSelection ? 1 : 0,
+    ));
+  }
+
+  /// Replaces every selection with [text] as one undo step.
+  void insertAtCursors(String text) {
+    _ensureAlive();
+    final encoded = utf8.encode(text);
+    final pointer = _bindings.allocate(encoded.length + 1);
+    pointer.asTypedList(encoded.length).setAll(0, encoded);
+    try {
+      _check(_bindings.documentMultiInsert(_handle, pointer, encoded.length));
+    } finally {
+      _bindings.freePointer(pointer);
+    }
+  }
+
+  /// Erases every selection, or one code point per collapsed caret.
+  void eraseAtCursors({bool backward = true}) {
+    _ensureAlive();
+    _check(_bindings.documentMultiErase(_handle, backward ? 1 : 0));
+  }
+
   /// Returns the matching bracket offset, or null when the caret is not on a
   /// bracket or no partner exists.
   int? matchBracket(int offset) {

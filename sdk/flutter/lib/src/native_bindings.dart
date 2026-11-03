@@ -317,6 +317,31 @@ typedef _SetSelectionDart = int Function(Pointer<Void>, int, int);
 typedef _MoveCursorNative = Int32 Function(Pointer<Void>, Uint32, Uint8);
 typedef _MoveCursorDart = int Function(Pointer<Void>, int, int);
 
+typedef _CursorCountNative = IntPtr Function(Pointer<Void>);
+typedef _CursorCountDart = int Function(Pointer<Void>);
+
+typedef _CursorAtNative = Int32 Function(
+    Pointer<Void>, IntPtr, Pointer<CcSelection>);
+typedef _CursorAtDart = int Function(
+    Pointer<Void>, int, Pointer<CcSelection>);
+
+typedef _AddCursorNative = Int32 Function(Pointer<Void>, Uint32, Uint32);
+typedef _AddCursorDart = int Function(Pointer<Void>, int, int);
+
+typedef _ClearCursorsNative = Void Function(Pointer<Void>);
+typedef _ClearCursorsDart = void Function(Pointer<Void>);
+
+typedef _MoveCursorsNative = Int32 Function(Pointer<Void>, Uint32, Uint8);
+typedef _MoveCursorsDart = int Function(Pointer<Void>, int, int);
+
+typedef _MultiInsertNative = Int32 Function(
+    Pointer<Void>, Pointer<Uint8>, IntPtr);
+typedef _MultiInsertDart = int Function(
+    Pointer<Void>, Pointer<Uint8>, int);
+
+typedef _MultiEraseNative = Int32 Function(Pointer<Void>, Uint8);
+typedef _MultiEraseDart = int Function(Pointer<Void>, int);
+
 typedef _MatchBracketNative = Int32 Function(
     Pointer<Void>, IntPtr, Pointer<IntPtr>);
 typedef _MatchBracketDart = int Function(
@@ -549,6 +574,20 @@ class CodeCoreBindings {
     documentMoveCursor =
         library.lookupFunction<_MoveCursorNative, _MoveCursorDart>(
             'cc_document_move_cursor');
+    documentCursorCount = library.lookupFunction<_CursorCountNative,
+        _CursorCountDart>('cc_document_cursor_count');
+    documentCursorAt = library
+        .lookupFunction<_CursorAtNative, _CursorAtDart>('cc_document_cursor_at');
+    documentAddCursor = library.lookupFunction<_AddCursorNative,
+        _AddCursorDart>('cc_document_add_cursor');
+    documentClearCursors = library.lookupFunction<_ClearCursorsNative,
+        _ClearCursorsDart>('cc_document_clear_cursors');
+    documentMoveCursors = library.lookupFunction<_MoveCursorsNative,
+        _MoveCursorsDart>('cc_document_move_cursors');
+    documentMultiInsert = library.lookupFunction<_MultiInsertNative,
+        _MultiInsertDart>('cc_document_multi_insert');
+    documentMultiErase = library.lookupFunction<_MultiEraseNative,
+        _MultiEraseDart>('cc_document_multi_erase');
     documentMatchBracket = library.lookupFunction<_MatchBracketNative,
         _MatchBracketDart>('cc_document_match_bracket');
     documentTokenize =
@@ -660,6 +699,13 @@ class CodeCoreBindings {
   late final _GetSelectionDart documentGetSelection;
   late final _SetSelectionDart documentSetSelection;
   late final _MoveCursorDart documentMoveCursor;
+  late final _CursorCountDart documentCursorCount;
+  late final _CursorAtDart documentCursorAt;
+  late final _AddCursorDart documentAddCursor;
+  late final _ClearCursorsDart documentClearCursors;
+  late final _MoveCursorsDart documentMoveCursors;
+  late final _MultiInsertDart documentMultiInsert;
+  late final _MultiEraseDart documentMultiErase;
   late final _MatchBracketDart documentMatchBracket;
   late final _TokenizeDart documentTokenize;
   late final _FreeTokensDart tokensFree;

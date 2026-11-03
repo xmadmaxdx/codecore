@@ -828,6 +828,81 @@ void testLineIndexFuzz(cc_engine* engine) {
   cc_document_destroy(document);
 }
 
+void testMultiCursor(cc_engine* engine) {
+  cc_document* document = makeDocument(engine);
+  const std::string source = "one\ntwo\nthree\n";
+  CHECK(cc_document_set_text(document, source.data(), source.size()) == CC_STATUS_OK);
+  CHECK(cc_document_cursor_count(document) == 1);
+
+  CHECK(cc_document_set_selection(document, 0, 0) == CC_STATUS_OK);
+  CHECK(cc_document_add_cursor(document, 4, 4) == CC_STATUS_OK);
+  CHECK(cc_document_cursor_count(document) == 2);
+  cc_selection cursor{};
+  CHECK(cc_document_cursor_at(document, 1, &cursor) == CC_STATUS_OK);
+  CHECK(cursor.anchor == 4 && cursor.focus == 4);
+  CHECK(cc_document_cursor_at(document, 9, &cursor) == CC_STATUS_OUT_OF_RANGE);
+
+  CHECK(cc_document_multi_insert(document, "# ", 2) == CC_STATUS_OK);
+  CHECK(documentText(document) == "# one\n# two\nthree\n");
+  CHECK(cc_document_cursor_count(document) == 2);
+  CHECK(cc_document_get_selection(document).focus == 2);
+  CHECK(cc_document_cursor_at(document, 1, &cursor) == CC_STATUS_OK);
+  CHECK(cursor.focus == 8);
+
+  CHECK(cc_document_undo(document) == CC_STATUS_OK);
+  CHECK(documentText(document) == source);
+  CHECK(cc_document_redo(document) == CC_STATUS_OK);
+  CHECK(documentText(document) == "# one\n# two\nthree\n");
+  CHECK(cc_document_undo(document) == CC_STATUS_OK);
+  CHECK(documentText(document) == source);
+
+  // Two non-collapsed selections erase atomically.
+  CHECK(cc_document_set_selection(document, 0, 3) == CC_STATUS_OK);
+  CHECK(cc_document_add_cursor(document, 4, 7) == CC_STATUS_OK);
+  CHECK(cc_document_multi_erase(document, 1) == CC_STATUS_OK);
+  CHECK(documentText(document) == "\n\nthree\n");
+  CHECK(cc_document_get_selection(document).focus == 0);
+  CHECK(cc_document_cursor_at(document, 1, &cursor) == CC_STATUS_OK);
+  CHECK(cursor.focus == 1);
+  CHECK(cc_document_undo(document) == CC_STATUS_OK);
+  CHECK(documentText(document) == source);
+
+  // Backspace at two collapsed carets removes one code point each.
+  CHECK(cc_document_set_text(document, "ab\ncd\n", 6) == CC_STATUS_OK);
+  CHECK(cc_document_set_selection(document, 2, 2) == CC_STATUS_OK);
+  CHECK(cc_document_add_cursor(document, 5, 5) == CC_STATUS_OK);
+  CHECK(cc_document_multi_erase(document, 1) == CC_STATUS_OK);
+  CHECK(documentText(document) == "a\nc\n");
+  CHECK(cc_document_get_selection(document).focus == 1);
+  CHECK(cc_document_cursor_at(document, 1, &cursor) == CC_STATUS_OK);
+  CHECK(cursor.focus == 3);
+
+  // Moving every cursor keeps them independent.
+  CHECK(cc_document_set_text(document, "ab\ncd", 5) == CC_STATUS_OK);
+  CHECK(cc_document_set_selection(document, 1, 1) == CC_STATUS_OK);
+  CHECK(cc_document_add_cursor(document, 4, 4) == CC_STATUS_OK);
+  CHECK(cc_document_move_cursors(document, CC_MOVE_RIGHT, 0) == CC_STATUS_OK);
+  CHECK(cc_document_get_selection(document).focus == 2);
+  CHECK(cc_document_cursor_at(document, 1, &cursor) == CC_STATUS_OK);
+  CHECK(cursor.focus == 5);
+
+  // Overlapping selections merge before replacement.
+  CHECK(cc_document_set_text(document, "abcdef", 6) == CC_STATUS_OK);
+  CHECK(cc_document_set_selection(document, 0, 3) == CC_STATUS_OK);
+  CHECK(cc_document_add_cursor(document, 2, 5) == CC_STATUS_OK);
+  CHECK(cc_document_multi_insert(document, "X", 1) == CC_STATUS_OK);
+  CHECK(documentText(document) == "Xf");
+  CHECK(cc_document_get_selection(document).focus == 1);
+  CHECK(cc_document_cursor_count(document) == 1);
+
+  cc_document_clear_cursors(document);
+  CHECK(cc_document_cursor_count(document) == 1);
+  CHECK(cc_document_set_editable(document, 0) == CC_STATUS_OK);
+  CHECK(cc_document_multi_insert(document, "x", 1) == CC_STATUS_READ_ONLY);
+  CHECK(cc_document_set_editable(document, 1) == CC_STATUS_OK);
+  cc_document_destroy(document);
+}
+
 void testAllLanguages(cc_engine* engine) {
   for (size_t index = 0; index < cc_engine_language_count(engine); ++index) {
     const cc_language_info* info = cc_engine_language_at(engine, index);
@@ -904,6 +979,7 @@ int main() {
   testBrackets(engine);
   testChangeEvents(engine);
   testAgentEditing(engine);
+  testMultiCursor(engine);
   testSnapshots(engine);
   testLineIndexFuzz(engine);
   testAllLanguages(engine);

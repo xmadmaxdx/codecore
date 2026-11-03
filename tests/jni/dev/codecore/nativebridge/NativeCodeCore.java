@@ -113,6 +113,20 @@ public final class NativeCodeCore {
 
     public static native int nativeMoveCursor(long handle, int move, boolean extend);
 
+    public static native int nativeCursorCount(long handle);
+
+    public static native long nativeCursorAt(long handle, int index);
+
+    public static native int nativeAddCursor(long handle, int anchor, int focus);
+
+    public static native void nativeClearCursors(long handle);
+
+    public static native int nativeMoveCursors(long handle, int move, boolean extend);
+
+    public static native int nativeMultiInsert(long handle, String text);
+
+    public static native int nativeMultiErase(long handle, boolean backward);
+
     public static native int nativeSetLanguage(long handle, int languageId);
 
     public static native void nativeSetChangeListener(long handle, Object listener);

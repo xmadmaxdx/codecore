@@ -159,7 +159,7 @@ Status Document::setText(std::string_view text) {
   lineIndex_.rebuild(text);
   analysis_.reset();
   version_ += 1;
-  selection_ = Selection{};
+  selections_.assign(1, Selection{});
   clearTransientState();
   undoStack_.clear();
   redoStack_.clear();
@@ -501,17 +501,20 @@ Status Document::undo() {
   EditRecord record = std::move(undoStack_.back());
   undoStack_.pop_back();
   clearTransientState();
-  buffer_.erase(record.offset, record.inserted.size());
-  buffer_.insert(record.offset, record.removed);
-  lineIndex_.applyEdit(record.offset, record.offset + record.inserted.size(),
-                       record.removed);
+  for (auto it = record.ops.rbegin(); it != record.ops.rend(); ++it) {
+    buffer_.erase(it->offset, it->inserted.size());
+    buffer_.insert(it->offset, it->removed);
+    lineIndex_.applyEdit(it->offset, it->offset + it->inserted.size(), it->removed);
+  }
   textDirty_ = true;
   analysis_.reset();
   redoStack_.push_back(record);
   version_ += 1;
   lastEditTick_ = 0;
-  emitChange(ChangeKind::Undo, record.offset, record.inserted.size(), record.removed.size(),
-             record.origin);
+  for (auto it = record.ops.rbegin(); it != record.ops.rend(); ++it) {
+    emitChange(ChangeKind::Undo, it->offset, it->inserted.size(), it->removed.size(),
+               record.origin);
+  }
   return succeed();
 }
 
@@ -526,17 +529,20 @@ Status Document::redo() {
   EditRecord record = std::move(redoStack_.back());
   redoStack_.pop_back();
   clearTransientState();
-  buffer_.erase(record.offset, record.removed.size());
-  buffer_.insert(record.offset, record.inserted);
-  lineIndex_.applyEdit(record.offset, record.offset + record.removed.size(),
-                       record.inserted);
+  for (const EditRecord::Op& op : record.ops) {
+    buffer_.erase(op.offset, op.removed.size());
+    buffer_.insert(op.offset, op.inserted);
+    lineIndex_.applyEdit(op.offset, op.offset + op.removed.size(), op.inserted);
+  }
   textDirty_ = true;
   analysis_.reset();
   undoStack_.push_back(record);
   version_ += 1;
   lastEditTick_ = 0;
-  emitChange(ChangeKind::Redo, record.offset, record.removed.size(), record.inserted.size(),
-             record.origin);
+  for (const EditRecord::Op& op : record.ops) {
+    emitChange(ChangeKind::Redo, op.offset, op.removed.size(), op.inserted.size(),
+               record.origin);
+  }
   return succeed();
 }
 
@@ -560,6 +566,19 @@ void Document::setHistoryLimit(size_t limit) {
   }
 }
 
+void Document::recordEdit(std::vector<EditRecord::Op> ops, EditOrigin origin) {
+  redoStack_.clear();
+  if (historyLimit_ == 0 || ops.empty()) {
+    lastEditTick_ = 0;
+    return;
+  }
+  undoStack_.push_back(EditRecord{std::move(ops), origin});
+  lastEditTick_ = 0;
+  while (undoStack_.size() > historyLimit_) {
+    undoStack_.erase(undoStack_.begin());
+  }
+}
+
 void Document::recordEdit(size_t offset, std::string removed, std::string inserted,
                           bool coalesce, EditOrigin origin) {
   redoStack_.clear();
@@ -569,17 +588,22 @@ void Document::recordEdit(size_t offset, std::string removed, std::string insert
   const uint64_t now = steadyTicks();
   if (coalesce && !undoStack_.empty() && removed.empty() && !inserted.empty()) {
     EditRecord& previous = undoStack_.back();
-    const bool adjacent = offset == previous.offset + previous.inserted.size();
-    const bool recent = lastEditTick_ != 0 && now > lastEditTick_ &&
-                        now - lastEditTick_ < 1'000'000'000ull;
-    if (previous.removed.empty() && adjacent && recent && previous.origin == origin &&
-        previous.inserted.size() < 256) {
-      previous.inserted += inserted;
-      lastEditTick_ = now;
-      return;
+    if (previous.ops.size() == 1 && previous.ops[0].removed.empty()) {
+      EditRecord::Op& op = previous.ops[0];
+      const bool adjacent = offset == op.offset + op.inserted.size();
+      const bool recent = lastEditTick_ != 0 && now > lastEditTick_ &&
+                          now - lastEditTick_ < 1'000'000'000ull;
+      if (adjacent && recent && previous.origin == origin && op.inserted.size() < 256) {
+        op.inserted += inserted;
+        lastEditTick_ = now;
+        return;
+      }
     }
   }
-  undoStack_.push_back(EditRecord{offset, std::move(removed), std::move(inserted), origin});
+  EditRecord record;
+  record.origin = origin;
+  record.ops.push_back(EditRecord::Op{offset, std::move(removed), std::move(inserted)});
+  undoStack_.push_back(std::move(record));
   lastEditTick_ = now;
   while (undoStack_.size() > historyLimit_) {
     undoStack_.erase(undoStack_.begin());
@@ -644,7 +668,7 @@ Status Document::positionToOffset(uint32_t line, uint32_t column, size_t* out) c
 
 Selection Document::selection() const {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
-  return selection_;
+  return selections_.front();
 }
 
 Status Document::setSelection(uint32_t anchor, uint32_t focus) {
@@ -658,16 +682,16 @@ Status Document::setSelection(uint32_t anchor, uint32_t focus) {
       (focus < size && isContinuation(static_cast<unsigned char>(text[focus])))) {
     return fail(Status::InvalidArgument, "selection splits a UTF-8 code point");
   }
-  selection_ = Selection{anchor, focus};
+  selections_.assign(1, Selection{anchor, focus});
   return succeed();
 }
 
-Status Document::moveCursor(CursorMove move, bool extendSelection) {
-  std::lock_guard<std::recursive_mutex> lock(mutex_);
-  const std::string& text = currentText();
+Status Document::computeCursorTarget(const std::string& text, Selection selection,
+                                     CursorMove move, bool extendSelection,
+                                     size_t* outTarget) const {
   const size_t size = text.size();
-  size_t focus = std::min<size_t>(selection_.focus, size);
-  size_t anchor = std::min<size_t>(selection_.anchor, size);
+  size_t focus = std::min<size_t>(selection.focus, size);
+  size_t anchor = std::min<size_t>(selection.anchor, size);
   size_t target = focus;
 
   switch (move) {
@@ -774,14 +798,288 @@ Status Document::moveCursor(CursorMove move, bool extendSelection) {
       break;
     }
     default:
-      return fail(Status::InvalidArgument, "unknown cursor movement");
+      return Status::InvalidArgument;
   }
 
-  focus = std::min(target, size);
-  if (!extendSelection) {
-    anchor = focus;
+  *outTarget = std::min(target, size);
+  return Status::Ok;
+}
+
+Status Document::moveCursor(CursorMove move, bool extendSelection) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  const std::string& text = currentText();
+  size_t target = 0;
+  const Status status =
+      computeCursorTarget(text, selections_.front(), move, extendSelection, &target);
+  if (status != Status::Ok) {
+    return fail(Status::InvalidArgument, "unknown cursor movement");
   }
-  selection_ = Selection{static_cast<uint32_t>(anchor), static_cast<uint32_t>(focus)};
+  const size_t focus = std::min(target, text.size());
+  const size_t anchor =
+      extendSelection ? std::min<size_t>(selections_.front().anchor, text.size()) : focus;
+  selections_.front() = Selection{static_cast<uint32_t>(anchor),
+                                  static_cast<uint32_t>(focus)};
+  return succeed();
+}
+
+size_t Document::cursorCount() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  return selections_.size();
+}
+
+Status Document::cursorAt(size_t index, Selection* out) const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (!out) {
+    return fail(Status::InvalidArgument, "cursor output is null");
+  }
+  if (index >= selections_.size()) {
+    return fail(Status::OutOfRange, "cursor index is outside the document");
+  }
+  *out = selections_[index];
+  return succeed();
+}
+
+Status Document::addCursor(uint32_t anchor, uint32_t focus) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  const size_t size = buffer_.size();
+  if (anchor > size || focus > size) {
+    return fail(Status::OutOfRange, "cursor is outside the document");
+  }
+  const std::string& text = currentText();
+  if ((anchor < size && isContinuation(static_cast<unsigned char>(text[anchor]))) ||
+      (focus < size && isContinuation(static_cast<unsigned char>(text[focus])))) {
+    return fail(Status::InvalidArgument, "cursor splits a UTF-8 code point");
+  }
+  for (const Selection& existing : selections_) {
+    if (existing.anchor == anchor && existing.focus == focus) {
+      return succeed();
+    }
+  }
+  selections_.push_back(Selection{anchor, focus});
+  return succeed();
+}
+
+void Document::clearCursors() {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (selections_.size() > 1) {
+    selections_.resize(1);
+  }
+}
+
+Status Document::moveCursors(CursorMove move, bool extendSelection) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  const std::string& text = currentText();
+  std::vector<Selection> updated;
+  updated.reserve(selections_.size());
+  for (const Selection& selection : selections_) {
+    size_t target = 0;
+    if (computeCursorTarget(text, selection, move, extendSelection, &target) != Status::Ok) {
+      return fail(Status::InvalidArgument, "unknown cursor movement");
+    }
+    const size_t focus = std::min(target, text.size());
+    const size_t anchor =
+        extendSelection ? std::min<size_t>(selection.anchor, text.size()) : focus;
+    updated.push_back(Selection{static_cast<uint32_t>(anchor),
+                                static_cast<uint32_t>(focus)});
+  }
+  selections_ = std::move(updated);
+  return succeed();
+}
+
+Status Document::multiInsert(std::string_view text) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (options_.readOnly) {
+    return fail(Status::ReadOnly, "document is read-only");
+  }
+  if (!isValidUtf8(text)) {
+    return fail(Status::InvalidArgument, "inserted text is not valid UTF-8");
+  }
+  if (selections_.empty()) {
+    selections_.push_back(Selection{});
+  }
+
+  const std::string& underlying = currentText();
+  const size_t size = underlying.size();
+  struct Target {
+    size_t start = 0;
+    size_t end = 0;
+  };
+  std::vector<Target> targets;
+  targets.reserve(selections_.size());
+  for (const Selection& selection : selections_) {
+    size_t anchor = std::min<size_t>(selection.anchor, size);
+    size_t focus = std::min<size_t>(selection.focus, size);
+    if (anchor > focus) {
+      std::swap(anchor, focus);
+    }
+    targets.push_back(Target{anchor, focus});
+  }
+  std::sort(targets.begin(), targets.end(), [](const Target& left, const Target& right) {
+    if (left.start != right.start) {
+      return left.start < right.start;
+    }
+    return left.end < right.end;
+  });
+
+  std::vector<Target> merged;
+  for (const Target& target : targets) {
+    if (!merged.empty()) {
+      Target& last = merged.back();
+      const bool duplicateCaret = target.start == target.end && last.start == last.end &&
+                                  target.start == last.start;
+      if (target.start < last.end || duplicateCaret) {
+        last.end = std::max(last.end, target.end);
+        continue;
+      }
+    }
+    merged.push_back(target);
+  }
+
+  size_t removedTotal = 0;
+  for (const Target& target : merged) {
+    removedTotal += target.end - target.start;
+  }
+  if (size - removedTotal + text.size() * merged.size() > maxDocumentBytes_) {
+    return fail(Status::OutOfRange, "document exceeds the configured maximum size");
+  }
+  if (text.empty() && removedTotal == 0) {
+    return succeed();
+  }
+
+  const EditOrigin origin = nextOrigin_;
+  clearTransientState();
+  std::vector<EditRecord::Op> ops;
+  ops.reserve(merged.size());
+  std::vector<size_t> removedLengths(merged.size(), 0);
+  for (size_t index = merged.size(); index-- > 0;) {
+    const Target& target = merged[index];
+    std::string removed = buffer_.slice(target.start, target.end - target.start);
+    removedLengths[index] = removed.size();
+    buffer_.erase(target.start, target.end - target.start);
+    if (!text.empty()) {
+      buffer_.insert(target.start, text);
+    }
+    lineIndex_.applyEdit(target.start, target.end, text);
+    EditRecord::Op op;
+    op.offset = target.start;
+    op.removed = std::move(removed);
+    op.inserted.assign(text.data(), text.size());
+    ops.push_back(std::move(op));
+  }
+
+  textDirty_ = true;
+  analysis_.reset();
+  version_ += 1;
+
+  std::vector<Selection> updated;
+  updated.reserve(merged.size());
+  size_t delta = 0;
+  for (const Target& target : merged) {
+    const size_t caret = target.start + text.size() + delta;
+    updated.push_back(Selection{static_cast<uint32_t>(caret), static_cast<uint32_t>(caret)});
+    delta += text.size() - (target.end - target.start);
+  }
+  selections_ = std::move(updated);
+  recordEdit(std::move(ops), origin);
+
+  const ChangeKind kind = text.empty()
+                              ? ChangeKind::Erase
+                              : (removedTotal == 0 ? ChangeKind::Insert : ChangeKind::Replace);
+  for (size_t index = 0; index < merged.size(); ++index) {
+    emitChange(kind, merged[index].start, removedLengths[index], text.size(), origin);
+  }
+  return succeed();
+}
+
+Status Document::multiErase(bool backward) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  if (options_.readOnly) {
+    return fail(Status::ReadOnly, "document is read-only");
+  }
+  if (selections_.empty()) {
+    selections_.push_back(Selection{});
+  }
+
+  const std::string& underlying = currentText();
+  const size_t size = underlying.size();
+  struct Target {
+    size_t start = 0;
+    size_t end = 0;
+  };
+  std::vector<Target> targets;
+  targets.reserve(selections_.size());
+  for (const Selection& selection : selections_) {
+    size_t anchor = std::min<size_t>(selection.anchor, size);
+    size_t focus = std::min<size_t>(selection.focus, size);
+    if (anchor > focus) {
+      std::swap(anchor, focus);
+    }
+    if (anchor != focus) {
+      targets.push_back(Target{anchor, focus});
+    } else if (backward) {
+      if (focus == 0) {
+        continue;
+      }
+      targets.push_back(Target{previousCodepointOffset(underlying, focus), focus});
+    } else {
+      if (focus >= size) {
+        continue;
+      }
+      targets.push_back(Target{focus, nextCodepointOffset(underlying, focus)});
+    }
+  }
+  if (targets.empty()) {
+    return succeed();
+  }
+  std::sort(targets.begin(), targets.end(), [](const Target& left, const Target& right) {
+    if (left.start != right.start) {
+      return left.start < right.start;
+    }
+    return left.end < right.end;
+  });
+
+  std::vector<Target> merged;
+  for (const Target& target : targets) {
+    if (!merged.empty() && target.start <= merged.back().end) {
+      merged.back().end = std::max(merged.back().end, target.end);
+      continue;
+    }
+    merged.push_back(target);
+  }
+
+  const EditOrigin origin = nextOrigin_;
+  clearTransientState();
+  std::vector<EditRecord::Op> ops;
+  ops.reserve(merged.size());
+  for (size_t index = merged.size(); index-- > 0;) {
+    const Target& target = merged[index];
+    std::string removed = buffer_.slice(target.start, target.end - target.start);
+    buffer_.erase(target.start, target.end - target.start);
+    lineIndex_.applyEdit(target.start, target.end, std::string_view());
+    EditRecord::Op op;
+    op.offset = target.start;
+    op.removed = std::move(removed);
+    ops.push_back(std::move(op));
+  }
+
+  textDirty_ = true;
+  analysis_.reset();
+  version_ += 1;
+
+  std::vector<Selection> updated;
+  updated.reserve(merged.size());
+  size_t delta = 0;
+  for (const Target& target : merged) {
+    const size_t caret = target.start - delta;
+    updated.push_back(Selection{static_cast<uint32_t>(caret), static_cast<uint32_t>(caret)});
+    delta += target.end - target.start;
+  }
+  selections_ = std::move(updated);
+  recordEdit(std::move(ops), origin);
+
+  for (const Target& target : merged) {
+    emitChange(ChangeKind::Erase, target.start, target.end - target.start, 0, origin);
+  }
   return succeed();
 }
 
@@ -913,7 +1211,7 @@ Status Document::applyContent(std::string_view text, ChangeKind kind, EditOrigin
   textDirty_ = true;
   analysis_.reset();
   version_ += 1;
-  selection_ = Selection{};
+  selections_.assign(1, Selection{});
   recordEdit(start, removed, inserted, false, origin);
   emitChange(kind, start, removed.size(), inserted.size(), origin);
   return succeed();
