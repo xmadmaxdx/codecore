@@ -81,6 +81,7 @@ extern "C" {
 typedef struct cc_engine cc_engine;
 typedef struct cc_document cc_document;
 typedef struct cc_snapshot cc_snapshot;
+typedef struct cc_lsp_client cc_lsp_client;
 
 typedef enum cc_status {
   CC_STATUS_OK = 0,
@@ -404,6 +405,48 @@ CC_API cc_status cc_document_restore_snapshot(cc_document* document,
 
 /* Change notifications. */
 CC_API void cc_document_set_change_listener(cc_document* document, cc_change_listener listener, void* user_data);
+
+/*
+ * LSP client
+ * ----------
+ * The host owns the transport. Drain cc_lsp_take_outgoing and write those bytes
+ * to the language server, then pass received bytes to cc_lsp_feed. The client
+ * speaks the LSP base protocol (Content-Length framing) and tracks request ids.
+ *
+ * Positions use LSP's UTF-16 line/character coordinates, not CodeCore byte
+ * offsets. The host converts between the two.
+ *
+ * Strings returned by take_result and take_diagnostics are allocated with
+ * cc_alloc and must be released with cc_string_free. The capability and error
+ * pointers are owned by the client and stay valid until the next receive.
+ */
+CC_API cc_lsp_client* cc_lsp_create(void);
+CC_API void cc_lsp_destroy(cc_lsp_client* client);
+CC_API void cc_lsp_initialize(cc_lsp_client* client, const char* root_uri);
+CC_API void cc_lsp_feed(cc_lsp_client* client, const char* data, size_t length);
+CC_API char* cc_lsp_take_outgoing(cc_lsp_client* client, size_t* out_length);
+CC_API uint8_t cc_lsp_take_result(cc_lsp_client* client, char** out_method,
+                                  char** out_payload);
+CC_API uint8_t cc_lsp_take_diagnostics(cc_lsp_client* client, char** out_uri,
+                                       char** out_payload);
+CC_API uint8_t cc_lsp_is_initialized(const cc_lsp_client* client);
+CC_API const char* cc_lsp_server_capabilities(const cc_lsp_client* client);
+CC_API cc_status cc_lsp_did_open(cc_lsp_client* client, const char* uri,
+                                 const char* language_id, int32_t version, const char* text,
+                                 size_t text_length);
+CC_API cc_status cc_lsp_did_change(cc_lsp_client* client, const char* uri, int32_t version,
+                                   const char* text, size_t text_length);
+CC_API cc_status cc_lsp_did_close(cc_lsp_client* client, const char* uri);
+CC_API int64_t cc_lsp_completion(cc_lsp_client* client, const char* uri, uint32_t line,
+                                 uint32_t character);
+CC_API int64_t cc_lsp_hover(cc_lsp_client* client, const char* uri, uint32_t line,
+                            uint32_t character);
+CC_API int64_t cc_lsp_definition(cc_lsp_client* client, const char* uri, uint32_t line,
+                                 uint32_t character);
+CC_API void cc_lsp_cancel(cc_lsp_client* client, int64_t id);
+CC_API void cc_lsp_shutdown(cc_lsp_client* client);
+CC_API void cc_lsp_exit(cc_lsp_client* client);
+CC_API const char* cc_lsp_last_error(const cc_lsp_client* client);
 
 #ifdef __cplusplus
 } /* extern "C" */

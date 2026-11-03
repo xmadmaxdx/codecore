@@ -21,9 +21,13 @@ set(CODECORE_CORE_SOURCES
   core/document/document.cpp
   core/analysis/analysis.cpp
   core/diff/diff.cpp
+  core/lsp/json.cpp
+  core/lsp/protocol.cpp
+  core/lsp/client.cpp
   core/snapshot/snapshot.cpp
   core/engine/engine.cpp
   native/src/codecore_api.cpp
+  native/src/codecore_lsp_api.cpp
 )
 
 add_library(codecore_objects OBJECT ${CODECORE_CORE_SOURCES})
@@ -90,6 +94,20 @@ if(CODECORE_BUILD_TESTS)
     target_compile_options(codecore_tests PRIVATE -Wall -Wextra)
   endif()
   add_test(NAME codecore_core COMMAND codecore_tests)
+
+  add_executable(codecore_lsp_tests
+    tests/core/test_lsp.cpp
+  )
+  target_link_libraries(codecore_lsp_tests PRIVATE codecore)
+  target_include_directories(codecore_lsp_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
+  if(MSVC)
+    target_compile_options(codecore_lsp_tests PRIVATE /W4)
+  else()
+    target_compile_options(codecore_lsp_tests PRIVATE -Wall -Wextra)
+  endif()
+  add_test(NAME codecore_lsp COMMAND codecore_lsp_tests)
 
   # Manual benchmark; intentionally not registered with CTest because timings
   # are machine-dependent.

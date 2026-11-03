@@ -231,6 +231,49 @@ references. Switching language invalidates analysis but does not edit text.
 
 There is no semantic-LSP flag. Do not infer LSP support from these bits.
 
+## LSP client
+
+The shared LSP client is transport-agnostic: the host owns the language-server
+process or socket.
+
+```c
+cc_lsp_client* lsp = cc_lsp_create();
+cc_lsp_initialize(lsp, "file:///project");
+
+size_t frame_length = 0;
+char* frame = cc_lsp_take_outgoing(lsp, &frame_length);
+/* write frame, frame_length bytes, to the language server */
+cc_string_free(frame);
+
+/* when bytes arrive from the server */
+cc_lsp_feed(lsp, bytes, bytes_length);
+
+char* method = NULL;
+char* payload = NULL;
+if (cc_lsp_take_result(lsp, &method, &payload)) {
+  /* payload is the result JSON */
+  cc_string_free(method);
+  cc_string_free(payload);
+}
+
+cc_lsp_did_open(lsp, "file:///project/main.py", "python", 1, text, text_length);
+int64_t request = cc_lsp_completion(lsp, "file:///project/main.py", 2, 4);
+cc_lsp_cancel(lsp, request);
+cc_lsp_shutdown(lsp);
+cc_lsp_exit(lsp);
+cc_lsp_destroy(lsp);
+```
+
+- Outgoing frames already include `Content-Length` framing.
+- Results and diagnostics are owned JSON strings; free them with
+  `cc_string_free`.
+- `cc_lsp_server_capabilities` and `cc_lsp_last_error` are client-owned and stay
+  valid until the next `cc_lsp_feed`.
+- Positions are LSP UTF-16 line/character values, not CodeCore byte offsets.
+- Sync is full-text (`TextDocumentSyncKind.Full`).
+- Frames larger than 16 MB or malformed JSON are rejected and reported through
+  the last-error string.
+
 ## Threading
 
 - The engine's language metadata is immutable and can be read concurrently.

@@ -26,6 +26,7 @@ covered by the verification below; it does not imply production hardening.
 | Undo/redo | Inverse records, typing coalescing, history limits, edit origins |
 | Selection/cursor | Get/set selection, left/right/word/line/up/down/doc moves |
 | Multi-cursor | Add/clear/query cursors, move all carets, atomic multi-insert and multi-erase with one undo entry |
+| LSP | JSON-RPC 2.0 plus Content-Length framing, initialize handshake, full-text sync, completion/hover/definition requests, publishDiagnostics capture, server request replies |
 | Brackets | Matching bracket lookup, bracket-aware diagnostics |
 | Languages | 23 language definitions with comments, strings, keywords, types, builtins |
 | Syntax | Lexical tokens for comments, strings, numbers, keywords, tags, attributes, CSS properties |
@@ -64,6 +65,7 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 | JNI smoke | `java -Djava.library.path=build/jni -cp build/jni/classes JniSmokeTest` | **74 checks, 0 failures** |
 | Kotlin Gradle build | `gradlew.bat :assembleDebug` | **BUILD SUCCESSFUL**; Kotlin and Android/JNI sources compiled, debug AAR produced |
 | Multi-cursor runtime tests | Not executable | Windows Device Guard blocks newly built EXE/DLL launches (error 4551); native, Dart and Kotlin builds still succeed |
+| LSP build | `cmake --build build/native --target codecore_lsp_tests` | Compiled; execution blocked by Device Guard |
 | Flutter Android plugin | Not built on this machine | Plugin sources and CMake build are present |
 | Benchmark | `build/native/codecore_benchmark.exe` | Results recorded below; no target claimed |
 
@@ -80,8 +82,9 @@ CMake 3.20+, JDK 21, NDK 28.2.13676358.
 Do not treat any of these as available:
 
 - Tree-sitter parsing, grammars and syntax queries.
-- LSP client, semantic completion, hover, definition, references, rename,
-  formatting, code actions, semantic diagnostics.
+- Dart/Kotlin LSP transport bindings and a language-server process manager.
+- Semantic completion beyond LSP, references, rename, formatting and code
+  actions.
 - AI model providers, prompt orchestration, agent loops, chat, multi-file edits.
 - Flutter editor widgets and Kotlin/Compose views.
 - Editor rendering, gutter, minimap, tabs, themes (UI layer).
@@ -121,6 +124,11 @@ Do not treat any of these as available:
 11. **Regex search is host-controlled.** Patterns use C++ ECMAScript semantics,
     are capped at 10,000 ranges and are not protected against pathological
     backtracking. Validate or constrain patterns in trusted code.
+12. **LSP is transport-only.** The shared client handles protocol framing,
+    lifecycle and requests, but the host owns the process/socket. Document sync
+    is full-text, positions use UTF-16 coordinates, frames are capped at 16 MB
+    and no language server is bundled. Dart/Kotlin transport bindings are not
+    implemented yet.
 
 ## Performance snapshot
 

@@ -36,6 +36,7 @@ Implemented and tested:
 | Undo / redo, typing coalescing, edit origins | Implemented, tested |
 | Selection, cursor movement, bracket matching | Implemented, tested |
 | Multi-cursor editing and atomic grouped edits | Implemented; compile-verified |
+| LSP client (JSON-RPC framing, lifecycle, sync, completion/hover/definition, diagnostics) | Implemented; compile-verified through the C ABI |
 | 23 language definitions and lexical tokens | Implemented, tested |
 | Keyword / symbol / builtin completion | Implemented, tested |
 | Bracket and unterminated-literal diagnostics | Implemented, tested |
@@ -52,7 +53,8 @@ Implemented and tested:
 Not implemented yet — see [docs/status.md](docs/status.md):
 
 - Tree-sitter grammars and incremental syntax trees.
-- LSP client, semantic intelligence, rename, formatting.
+- Dart/Kotlin LSP transport bindings (the shared C ABI client is available).
+- Semantic intelligence, rename, formatting and code actions.
 - AI model providers, agent orchestration, chat or multi-file workflows.
 - Flutter editor widgets and Kotlin/Compose views (the UI is a separate layer).
 - Package manager, downloads, signing and verification.
@@ -62,6 +64,7 @@ Not implemented yet — see [docs/status.md](docs/status.md):
 
 ```text
 core/                 C++ engine (buffer, document, analysis, diff, snapshots)
+core/lsp/             JSON-RPC codec, LSP framing and client session
 native/include/       Public C ABI header
 native/src/           C ABI implementation
 native/jni/           JNI bridge

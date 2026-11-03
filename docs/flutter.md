@@ -156,6 +156,14 @@ only. Regex search uses ECMAScript syntax, is capped at 10,000 matches and
 throws `CodeCoreException` with status 1 for an invalid pattern. Capability
 flags on `core.languages` reflect what is implemented.
 
+## LSP
+
+The shared core now exposes an LSP client through the C ABI: framing, lifecycle,
+full-text sync, completion/hover/definition and diagnostics. The Dart package
+does not wrap it yet; the next integration step is a `CodeCoreLsp` wrapper that
+pumps frames through a host-provided transport (socket, pipe or platform
+channel). No language server is bundled and sync is full-text.
+
 ## Testing
 
 ```bash

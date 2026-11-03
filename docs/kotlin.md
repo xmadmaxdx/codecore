@@ -142,6 +142,13 @@ closed.
 - `CodeCoreSnapshot`: `version`, `length`, `languageId`, `text`, `close`
 - `close`
 
+## LSP
+
+The shared core exposes an LSP client through the C ABI. Kotlin transport
+bindings are not implemented yet; the planned adapter will pump frames through
+an Android-friendly transport instead of spawning a server binary. Document sync
+is full-text and positions are UTF-16 coordinates.
+
 ## Limitations
 
 - No Compose or Android View widgets yet.

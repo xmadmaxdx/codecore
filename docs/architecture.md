@@ -167,6 +167,26 @@ diagnostics and folding only.
 Analysis is per-version, not incremental. Snapshots move it off the document
 lock, but do not make tokenization incremental.
 
+## LSP client
+
+`core/lsp` is independent of the document layer. It provides:
+
+- `json` — a small JSON value, parser and serializer used for LSP payloads.
+- `protocol` — `Content-Length` framing and request/notification/response
+  classification, with incremental parsing of partial input.
+- `client` — the LSP lifecycle: `initialize`/`initialized`, full-text
+  `didOpen`/`didChange`/`didClose`, completion, hover, definition, cancellation,
+  `shutdown`/`exit`, completion-result delivery and `publishDiagnostics`
+  capture. Server requests such as `workspace/configuration` receive minimal
+  valid replies so a server does not stall.
+
+The client is transport-agnostic. It queues outgoing frames and accepts incoming
+bytes; the host owns the process, pipe or socket. This keeps the engine usable on
+Android, where spawning arbitrary language-server binaries is restricted.
+
+No language servers are bundled. The layer is lexical/semantic infrastructure,
+not a replacement for the CodeCore document model or completion engine.
+
 ## C ABI
 
 `native/include/codecore/codecore.h` is the only supported native boundary.
