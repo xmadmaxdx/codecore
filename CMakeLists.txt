@@ -1,13 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(CodeCore
-  VERSION 0.5.0
+  VERSION 0.6.0
   DESCRIPTION "Embeddable code editor engine"
   LANGUAGES C CXX)
 
 option(CODECORE_BUILD_TESTS "Build the native test suite" ON)
 option(CODECORE_BUILD_JNI "Build the optional JNI bridge" OFF)
 option(CODECORE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+
+# MinGW produces executables that depend on libstdc++/libgcc DLLs by default,
+# which makes them unusable unless the toolchain bin directory is on PATH.
+if(MINGW)
+  add_link_options(-static-libgcc -static-libstdc++)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,6 +28,8 @@ set(CODECORE_CORE_SOURCES
   core/document/document.cpp
   core/syntax/syntax.cpp
   core/exec/execution.cpp
+  core/term/terminal.cpp
+  core/runtime/runtime.cpp
   core/analysis/analysis.cpp
   core/analysis/background.cpp
   core/viewport/viewport.cpp
@@ -212,6 +220,34 @@ if(CODECORE_BUILD_TESTS)
     target_compile_options(codecore_execution_tests PRIVATE -Wall -Wextra)
   endif()
   add_test(NAME codecore_execution COMMAND codecore_execution_tests)
+
+  add_executable(codecore_terminal_tests
+    tests/core/test_terminal.cpp
+  )
+  target_link_libraries(codecore_terminal_tests PRIVATE codecore)
+  target_include_directories(codecore_terminal_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
+  if(MSVC)
+    target_compile_options(codecore_terminal_tests PRIVATE /W4)
+  else()
+    target_compile_options(codecore_terminal_tests PRIVATE -Wall -Wextra)
+  endif()
+  add_test(NAME codecore_terminal COMMAND codecore_terminal_tests)
+
+  add_executable(codecore_runtime_tests
+    tests/core/test_runtime.cpp
+  )
+  target_link_libraries(codecore_runtime_tests PRIVATE codecore)
+  target_include_directories(codecore_runtime_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
+  if(MSVC)
+    target_compile_options(codecore_runtime_tests PRIVATE /W4)
+  else()
+    target_compile_options(codecore_runtime_tests PRIVATE -Wall -Wextra)
+  endif()
+  add_test(NAME codecore_runtime COMMAND codecore_runtime_tests)
 
   add_executable(codecore_performance_tests
     tests/core/test_performance.cpp
