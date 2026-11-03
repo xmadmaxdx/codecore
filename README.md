@@ -25,6 +25,9 @@ editor-widget milestone, which does not exist yet.
 - Dart (`CodeCoreLsp`) and Kotlin (`CodeCoreLsp`) LSP clients with transport
   pumping, lifecycle, full-text sync, completion, hover, definition,
   references, symbols, rename, formatting, code actions and diagnostics.
+- A latest-wins background analysis worker: tokenization, diagnostics and
+  folding run off the caller's thread, and stale results are discarded.
+- Allocation-free viewport geometry for visible-line rendering with overscan.
 
 ## Status
 
@@ -38,8 +41,10 @@ Implemented and tested:
 | Insert / erase / replace / read-only / editable | Implemented, tested |
 | Undo / redo, typing coalescing, edit origins | Implemented, tested |
 | Selection, cursor movement, bracket matching | Implemented, tested |
-| Multi-cursor editing and atomic grouped edits | Implemented; compile-verified |
-| LSP client (framing, lifecycle, sync, completion, hover, definition, references, symbols, rename, formatting, code actions, diagnostics) | Implemented across the C ABI, Dart and Kotlin; compile-verified |
+| Multi-cursor editing and atomic grouped edits | Implemented, tested |
+| Background analysis worker (latest-wins, stale-result rejection) | Implemented, tested |
+| Viewport visible-range geometry with overscan | Implemented, tested |
+| LSP client (framing, lifecycle, sync, completion, hover, definition, references, symbols, rename, formatting, code actions, diagnostics) | Implemented across the C ABI, Dart and Kotlin; tested |
 | 23 language definitions and lexical tokens | Implemented, tested |
 | Keyword / symbol / builtin completion | Implemented, tested |
 | Bracket and unterminated-literal diagnostics | Implemented, tested |
@@ -50,11 +55,13 @@ Implemented and tested:
 | Proposed changes, bounded line diff, atomic accept/reject | Implemented, tested |
 | Ghost-text state, partial acceptance, dismissal | Implemented, tested |
 | Dart FFI SDK | Implemented, tested |
-| Kotlin JNI bridge | Compiled; Java harness covers the document surface and LSP lifecycle |
+| Kotlin JNI bridge | Compiled; Java harness covers the document surface and LSP lifecycle (98 checks) |
 | Flutter Android plugin build | Added; builds the same native sources; not built inside a Flutter app here |
 
 Not implemented yet — see [docs/status.md](docs/status.md):
 
+- Incremental tokenization; analysis is cached per version and offloaded to a
+  worker, but an edited document is still re-lexed from the start.
 - Tree-sitter grammars and incremental syntax trees.
 - Language-server process/socket managers and bundled servers (hosts own the
   transport; CodeCore ships the protocol client only).
@@ -68,6 +75,7 @@ Not implemented yet — see [docs/status.md](docs/status.md):
 
 ```text
 core/                 C++ engine (buffer, document, analysis, diff, snapshots)
+core/viewport/        Visible-line geometry and overscan math
 core/lsp/             JSON-RPC codec, LSP framing and client session
 native/include/       Public C ABI header
 native/src/           C ABI implementation
@@ -125,20 +133,17 @@ version or update `ndkVersion` in `sdk/kotlin/build.gradle.kts`.
 
 ## Verification
 
-> **Runtime verification note (November 3, 2026):** this machine's Device Guard
-> policy began blocking newly built binaries (`SecurityServicesRunning=2`,
-> error 4551). Counts below are from the last successful run before that
-> policy took effect. Changes since then are compile-verified only.
-
 Last verified on the development machine:
 
 | Check | Result |
 |---|---|
-| Native engine tests | **2,982 checks, 0 failures** |
-| CTest | 1/1 passed |
+| Native engine tests | **3,037 checks, 0 failures** |
+| LSP tests | **59 checks, 0 failures** |
+| Viewport/background tests | **36 checks, 0 failures** |
+| CTest | 3/3 passed |
 | Dart static analysis | No issues |
-| Dart FFI smoke test | **64 checks, 0 failures** |
-| JNI smoke test (Java) | **74 checks, 0 failures** |
+| Dart FFI smoke test | **82 checks, 0 failures** |
+| JNI smoke test (Java) | **98 checks, 0 failures** |
 | Kotlin module compile | `gradlew.bat :assembleDebug` — **BUILD SUCCESSFUL**, debug AAR produced (NDK 28.2.13676358) |
 | Benchmark | Manual harness exists; no speed target is claimed |
 

@@ -8,9 +8,11 @@
 #include <utility>
 #include <vector>
 
+#include "core/analysis/background.h"
 #include "core/document/document.h"
 #include "core/engine/engine.h"
 #include "core/language/language.h"
+#include "core/viewport/viewport.h"
 
 struct cc_engine {
   codecore::Engine* engine = nullptr;
@@ -26,6 +28,10 @@ struct cc_document {
 
 struct cc_snapshot {
   std::shared_ptr<codecore::Snapshot> snapshot;
+};
+
+struct cc_analyzer {
+  codecore::BackgroundAnalyzer analyzer;
 };
 
 namespace {
@@ -1070,6 +1076,70 @@ cc_status cc_document_restore_snapshot(cc_document* document, const cc_snapshot*
     return CC_STATUS_INVALID_ARGUMENT;
   }
   return mapStatus(document->document->restoreSnapshot(*snapshot->snapshot));
+}
+
+cc_analyzer* cc_analyzer_create(void) {
+  return new (std::nothrow) cc_analyzer();
+}
+
+void cc_analyzer_destroy(cc_analyzer* analyzer) { delete analyzer; }
+
+cc_status cc_analyzer_submit(cc_analyzer* analyzer, const cc_document* document) {
+  if (!analyzer || !document || !document->document) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  analyzer->analyzer.submit(document->document->createSnapshot());
+  return CC_STATUS_OK;
+}
+
+cc_snapshot* cc_analyzer_take_result(cc_analyzer* analyzer) {
+  if (!analyzer) {
+    return nullptr;
+  }
+  codecore::BackgroundAnalysisResult result;
+  if (!analyzer->analyzer.takeLatest(&result)) {
+    return nullptr;
+  }
+  auto* wrapper = new (std::nothrow) cc_snapshot();
+  if (!wrapper) {
+    return nullptr;
+  }
+  wrapper->snapshot = std::move(result.snapshot);
+  return wrapper;
+}
+
+void cc_analyzer_wait(cc_analyzer* analyzer) {
+  if (analyzer) {
+    analyzer->analyzer.waitIdle();
+  }
+}
+
+void cc_analyzer_cancel(cc_analyzer* analyzer) {
+  if (analyzer) {
+    analyzer->analyzer.cancel();
+  }
+}
+
+size_t cc_analyzer_dropped(const cc_analyzer* analyzer) {
+  return analyzer ? analyzer->analyzer.droppedCount() : 0;
+}
+
+size_t cc_analyzer_completed(const cc_analyzer* analyzer) {
+  return analyzer ? analyzer->analyzer.completedCount() : 0;
+}
+
+cc_status cc_viewport_visible_range(uint32_t line_count, uint32_t scroll_y,
+                                    uint32_t viewport_height, uint32_t line_height,
+                                    uint32_t overscan_lines,
+                                    cc_viewport_range* out_range) {
+  if (!out_range) {
+    return CC_STATUS_INVALID_ARGUMENT;
+  }
+  const codecore::ViewportRange range = codecore::visibleLineRange(
+      line_count, scroll_y, viewport_height, line_height, overscan_lines);
+  out_range->first_line = static_cast<uint32_t>(range.firstLine);
+  out_range->end_line = static_cast<uint32_t>(range.endLine);
+  return CC_STATUS_OK;
 }
 
 void cc_document_set_change_listener(cc_document* document, cc_change_listener listener,

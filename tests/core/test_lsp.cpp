@@ -97,6 +97,11 @@ void testClient() {
       R"({"jsonrpc":"2.0","id":1,"result":{"capabilities":{"completionProvider":{"triggerCharacters":["."]}}}})"));
   CHECK(client.isInitialized());
   CHECK(client.serverCapabilities().find("completionProvider") != std::string::npos);
+  LspResult initializeResult;
+  CHECK(client.takeResult(&initializeResult));
+  CHECK(initializeResult.id == 1);
+  CHECK(initializeResult.method == "initialize");
+  CHECK(!initializeResult.error);
   const std::string initializedFrame = client.takeOutgoing();
   CHECK(bodyOf(initializedFrame).find("\"method\":\"initialized\"") !=
         std::string::npos);

@@ -8,6 +8,7 @@ cmake_minimum_required(VERSION 3.22.1)
 project(codecore_android LANGUAGES CXX)
 
 set(CODECORE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+find_package(Threads REQUIRED)
 
 add_library(codecore_jni SHARED
   "${CODECORE_ROOT}/core/text_buffer/text_buffer.cpp"
@@ -16,6 +17,8 @@ add_library(codecore_jni SHARED
   "${CODECORE_ROOT}/core/document/line_index.cpp"
   "${CODECORE_ROOT}/core/document/document.cpp"
   "${CODECORE_ROOT}/core/analysis/analysis.cpp"
+  "${CODECORE_ROOT}/core/analysis/background.cpp"
+  "${CODECORE_ROOT}/core/viewport/viewport.cpp"
   "${CODECORE_ROOT}/core/diff/diff.cpp"
   "${CODECORE_ROOT}/core/snapshot/snapshot.cpp"
   "${CODECORE_ROOT}/core/engine/engine.cpp"
@@ -34,6 +37,7 @@ target_include_directories(codecore_jni PRIVATE
 
 target_compile_features(codecore_jni PRIVATE cxx_std_17)
 target_compile_options(codecore_jni PRIVATE -Wall -Wextra)
+target_link_libraries(codecore_jni PRIVATE Threads::Threads)
 
 set_target_properties(codecore_jni PROPERTIES
   OUTPUT_NAME codecore_jni

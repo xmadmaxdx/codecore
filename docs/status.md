@@ -22,6 +22,8 @@ covered by the verification below; it does not imply production hardening.
 | Document model | Set/get text, byte offsets, lines, positions, versions |
 | Line index | Incremental line-start updates, randomized insert/erase/replace checks |
 | Analysis cache | One immutable `Analysis` per text version; repeated queries reuse it |
+| Background analysis | One worker; latest submission wins, stale results are discarded, tokens/diagnostics/folding are computed off-thread |
+| Viewport geometry | Allocation-free visible-line range with overscan, line tops and content height |
 | Editing | Insert, erase, replace, UTF-8 boundary checks, read-only/editable mode |
 | Undo/redo | Inverse records, typing coalescing, history limits, edit origins |
 | Selection/cursor | Get/set selection, left/right/word/line/up/down/doc moves |
@@ -46,26 +48,21 @@ covered by the verification below; it does not imply production hardening.
 
 ## Verification performed
 
-The runtime counts below were recorded before this machine's Device Guard policy
-began blocking newly built binaries. Multi-cursor and later changes are
-compile-verified only until execution is permitted again.
-
-
 Environment: Windows, Flutter 3.47.7 / Dart 3.13.5, MinGW-w64 GCC 16.1.0,
 CMake 3.20+, JDK 21, NDK 28.2.13676358.
 
 | Check | Command | Result |
 |---|---|---|
 | Native build | `cmake --build build/native --config Release` | Success |
-| Native tests | `./build/native/codecore_tests.exe` | **2,982 checks, 0 failures** |
-| CTest | `ctest --test-dir build/native --output-on-failure` | 1/1 passed |
+| Native tests | `./build/native/codecore_tests.exe` | **3,037 checks, 0 failures** |
+| LSP tests | `./build/native/codecore_lsp_tests.exe` | **59 checks, 0 failures** |
+| Viewport/background tests | `./build/native/codecore_performance_tests.exe` | **36 checks, 0 failures** |
+| CTest | `ctest --test-dir build/native --output-on-failure` | 3/3 passed |
 | Dart analyze | `dart analyze` in `sdk/flutter` | No issues |
-| Dart FFI smoke | `dart run tool/smoke_test.dart` | **64 checks, 0 failures** |
-| JNI build | `cmake --build build/jni` | Success |
-| JNI smoke | `java -Djava.library.path=build/jni -cp build/jni/classes JniSmokeTest` | **74 checks, 0 failures** |
+| Dart FFI smoke | `dart run tool/smoke_test.dart` | **82 checks, 0 failures** |
+| JNI build | `cmake --build build/native -DCODECORE_BUILD_JNI=ON` | Success |
+| JNI smoke | `java -Djava.library.path=build/native -cp build/jni-test JniSmokeTest` | **98 checks, 0 failures** |
 | Kotlin Gradle build | `gradlew.bat :assembleDebug` | **BUILD SUCCESSFUL**; Kotlin and Android/JNI sources compiled, debug AAR produced |
-| Multi-cursor runtime tests | Not executable | Windows Device Guard blocks newly built EXE/DLL launches (error 4551); native, Dart and Kotlin builds still succeed |
-| LSP build | `cmake --build build/native --target codecore_lsp_tests` | Compiled; execution blocked by Device Guard |
 | LSP SDK surface | `dart analyze`, `gradlew.bat :assembleDebug` | Clean / BUILD SUCCESSFUL |
 | Flutter Android plugin | Not built on this machine | Plugin sources and CMake build are present |
 | Benchmark | `build/native/codecore_benchmark.exe` | Results recorded below; no target claimed |
@@ -92,8 +89,10 @@ Do not treat any of these as available:
 - Execution API, runtime manager, terminal, debugging, build system.
 - Project/workspace management, git integration, symbol indexing.
 - Indentation-based folding (brace and block-comment folding only).
-- Incremental tokenization; lexical analysis still scans the whole document per
-  version, though unchanged versions are cached.
+- Incremental tokenization; the background worker moves the full scan off the
+  caller's thread, but an edited document is still re-lexed from the start.
+- Per-line layout/render caches and partial invalidation (viewport math is ready;
+  the renderer is a separate layer).
 - Performance benchmarks with a target, memory profiling and low-end device
   testing.
 
@@ -102,8 +101,9 @@ Do not treat any of these as available:
 1. **Lexical, not semantic.** Highlighting and diagnostics are heuristic. A
    string that looks like code is a string; macro-expanded types are unknown.
 2. **Analysis is per-version, not incremental.** Each edit invalidates the
-   document analysis cache. Snapshots let hosts move that work off the document
-   lock, but they do not make tokenization incremental.
+   document analysis cache. `BackgroundAnalyzer` moves the full scan and
+   diagnostics off the caller's thread and rejects stale results, but it does not
+   make tokenization incremental.
 3. **Line index updates are O(number of lines).** Lookups are binary search;
    edits rebuild the line-start vector. This is measured by the manual benchmark,
    not yet optimized.
@@ -111,8 +111,9 @@ Do not treat any of these as available:
    clone, but they are not structural sharing.
 5. **Proposal diffs are bounded.** The LCS table is capped; very large inputs
    fall back to a correct but coarse delete-all/insert-all diff.
-6. **No async API.** Language services are synchronous. Hosts must schedule them
-   away from the UI thread for large files.
+6. **Document language services are synchronous.** `BackgroundAnalyzer` is the
+   async path for tokens, diagnostics and folding; completion and search remain
+   synchronous and should be scheduled by the host for large files.
 7. **JNI offsets are `Int`.** Documents over 2 GB cannot be addressed through
    the Kotlin bridge; the default engine limit is 64 MB.
 8. **Dart callbacks are isolate-local.** Change notifications must be used from

@@ -167,6 +167,36 @@ diagnostics and folding only.
 Analysis is per-version, not incremental. Snapshots move it off the document
 lock, but do not make tokenization incremental.
 
+## Background analysis
+
+`BackgroundAnalyzer` owns one worker thread and a latest-wins queue.
+
+- `submit(snapshot)` replaces any pending snapshot; replacing increments the
+  dropped counter. The worker captures the submission generation.
+- The worker computes tokens, diagnostics and folding ranges, then publishes
+  only if its generation is current and no newer version has been submitted.
+- A stale result is discarded, so an older analysis can never overwrite newer
+  editor state.
+- `takeLatest()` is non-blocking; `waitIdle()` exists for tests and shutdown and
+  must not be used on the UI thread.
+- C ABI: `cc_analyzer_*`; a completed result is an owned `cc_snapshot*` and can
+  be queried with the existing snapshot functions.
+
+This is the only CodeCore-owned thread. Documents and the LSP client remain
+caller-threaded.
+
+## Viewport geometry
+
+`visibleLineRange()` is allocation-free and designed to run every frame. Given
+line count, scroll position, viewport height, line height and overscan, it
+returns the half-open line range that should be laid out and drawn. `lineTop()`
+and `contentHeight()` saturate instead of overflowing.
+
+The renderer is not part of this repository yet. The geometry lets a future
+Flutter or Android renderer process the visible rows plus overscan instead of
+the whole document; per-line layout/render caches and dirty-line invalidation
+remain future work.
+
 ## LSP client
 
 `core/lsp` is independent of the document layer. It provides:
@@ -208,6 +238,9 @@ not a replacement for the CodeCore document model or completion engine.
 - Change listeners run synchronously on the mutating thread while the document is
   locked. They must not destroy the document or block.
 - Snapshots are immutable and may be queried from any thread.
+- `BackgroundAnalyzer` uses one worker thread, a latest-wins queue and
+  generation-based stale-result rejection. Its completion callback is polling;
+  it never touches UI state.
 - Dart callbacks are isolate-local; Kotlin callbacks run on the mutating thread.
 
 ## Platform SDKs
@@ -228,6 +261,10 @@ not a replacement for the CodeCore document model or completion engine.
 - **Incremental line starts** make position updates cheaper than rescanning text.
 - **Per-version analysis** avoids re-lexing unchanged documents.
 - **Immutable snapshots** let hosts parallelize analysis safely.
+- **Latest-wins background analysis** keeps full scans off the caller's thread
+  without publishing stale results.
+- **Visible-range geometry** keeps rendering work proportional to the viewport,
+  not the document.
 - **C ABI** keeps Dart and Kotlin independent of C++ ABI details.
 - **Lexical Level 1** delivers useful highlighting for 23 languages without
   grammar binaries; Tree-sitter remains the planned upgrade.

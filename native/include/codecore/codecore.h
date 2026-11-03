@@ -81,6 +81,7 @@ extern "C" {
 typedef struct cc_engine cc_engine;
 typedef struct cc_document cc_document;
 typedef struct cc_snapshot cc_snapshot;
+typedef struct cc_analyzer cc_analyzer;
 typedef struct cc_lsp_client cc_lsp_client;
 
 typedef enum cc_status {
@@ -402,6 +403,35 @@ CC_API cc_status cc_snapshot_search(const cc_snapshot* snapshot, const char* que
                                     cc_range** out_ranges, size_t* out_count);
 CC_API cc_status cc_document_restore_snapshot(cc_document* document,
                                              const cc_snapshot* snapshot);
+
+/*
+ * Background analysis.
+ *
+ * submit() captures an immutable snapshot and queues it on one worker thread.
+ * The newest submission wins; a stale result is discarded. wait() is optional
+ * and intended for tests/shutdown, not the UI thread. take_result() returns a
+ * snapshot owned by the caller (destroy with cc_snapshot_destroy) or NULL when
+ * no fresh result is available.
+ */
+CC_API cc_analyzer* cc_analyzer_create(void);
+CC_API void cc_analyzer_destroy(cc_analyzer* analyzer);
+CC_API cc_status cc_analyzer_submit(cc_analyzer* analyzer, const cc_document* document);
+CC_API cc_snapshot* cc_analyzer_take_result(cc_analyzer* analyzer);
+CC_API void cc_analyzer_wait(cc_analyzer* analyzer);
+CC_API void cc_analyzer_cancel(cc_analyzer* analyzer);
+CC_API size_t cc_analyzer_dropped(const cc_analyzer* analyzer);
+CC_API size_t cc_analyzer_completed(const cc_analyzer* analyzer);
+
+/* Visible-line geometry for viewport renderers (end_line is exclusive). */
+typedef struct cc_viewport_range {
+  uint32_t first_line;
+  uint32_t end_line;
+} cc_viewport_range;
+
+CC_API cc_status cc_viewport_visible_range(uint32_t line_count, uint32_t scroll_y,
+                                           uint32_t viewport_height, uint32_t line_height,
+                                           uint32_t overscan_lines,
+                                           cc_viewport_range* out_range);
 
 /* Change notifications. */
 CC_API void cc_document_set_change_listener(cc_document* document, cc_change_listener listener, void* user_data);

@@ -20,6 +20,8 @@ set(CODECORE_CORE_SOURCES
   core/document/line_index.cpp
   core/document/document.cpp
   core/analysis/analysis.cpp
+  core/analysis/background.cpp
+  core/viewport/viewport.cpp
   core/diff/diff.cpp
   core/lsp/json.cpp
   core/lsp/protocol.cpp
@@ -29,6 +31,8 @@ set(CODECORE_CORE_SOURCES
   native/src/codecore_api.cpp
   native/src/codecore_lsp_api.cpp
 )
+
+find_package(Threads REQUIRED)
 
 add_library(codecore_objects OBJECT ${CODECORE_CORE_SOURCES})
 set_target_properties(codecore_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -54,9 +58,11 @@ endif()
 # Static library: primary artifact for native embedders and tests.
 add_library(codecore STATIC $<TARGET_OBJECTS:codecore_objects>)
 target_include_directories(codecore INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
+target_link_libraries(codecore PUBLIC Threads::Threads)
 
 # Shared library: FFI / JNI host artifact.
 add_library(codecore_shared SHARED $<TARGET_OBJECTS:codecore_objects>)
+target_link_libraries(codecore_shared PRIVATE Threads::Threads)
 target_compile_definitions(codecore_shared PRIVATE CODECORE_BUILD_SHARED)
 target_include_directories(codecore_shared INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
 set_target_properties(codecore_shared PROPERTIES
@@ -108,6 +114,20 @@ if(CODECORE_BUILD_TESTS)
     target_compile_options(codecore_lsp_tests PRIVATE -Wall -Wextra)
   endif()
   add_test(NAME codecore_lsp COMMAND codecore_lsp_tests)
+
+  add_executable(codecore_performance_tests
+    tests/core/test_performance.cpp
+  )
+  target_link_libraries(codecore_performance_tests PRIVATE codecore)
+  target_include_directories(codecore_performance_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
+  if(MSVC)
+    target_compile_options(codecore_performance_tests PRIVATE /W4)
+  else()
+    target_compile_options(codecore_performance_tests PRIVATE -Wall -Wextra)
+  endif()
+  add_test(NAME codecore_performance COMMAND codecore_performance_tests)
 
   # Manual benchmark; intentionally not registered with CTest because timings
   # are machine-dependent.

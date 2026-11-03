@@ -67,8 +67,9 @@ class Parser {
 
  private:
   bool fail(const char* message, std::string* error) {
+    error_ = std::string(message) + " at byte " + std::to_string(position_);
     if (error) {
-      *error = std::string(message) + " at byte " + std::to_string(position_);
+      *error = error_;
     }
     return false;
   }
