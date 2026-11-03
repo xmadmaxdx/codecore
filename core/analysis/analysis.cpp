@@ -80,8 +80,9 @@ int kindRank(CompletionKind kind) {
 
 }  // namespace
 
-Analysis::Analysis(std::string text, std::shared_ptr<const Language> language)
-    : text_(std::move(text)), language_(std::move(language)) {
+Analysis::Analysis(std::string text, std::shared_ptr<const Language> language,
+                   std::shared_ptr<TokenCache> cache)
+    : text_(std::move(text)), cache_(std::move(cache)), language_(std::move(language)) {
   lineIndex_.rebuild(text_);
 }
 
@@ -92,13 +93,26 @@ void Analysis::ensureLexed() const {
   if (lexed_) {
     return;
   }
-  lex_ = lex(text_, *language_);
+  if (cache_ && language_) {
+    tokenSet_ = cache_->tokensFor(text_, *language_);
+  }
+  if (!tokenSet_) {
+    LexResult lexed = lex(text_, *language_);
+    auto set = std::make_shared<TokenSet>();
+    set->tokens = std::move(lexed.tokens);
+    set->unterminatedString = lexed.unterminatedString;
+    set->unterminatedStringStart = lexed.unterminatedStringStart;
+    set->unterminatedBlockComment = lexed.unterminatedBlockComment;
+    set->unterminatedBlockStart = lexed.unterminatedBlockStart;
+    set->relexedBytes = text_.size();
+    tokenSet_ = std::move(set);
+  }
   lexed_ = true;
 }
 
 const std::vector<Token>& Analysis::tokens() const {
   ensureLexed();
-  return lex_.tokens;
+  return tokenSet_->tokens;
 }
 
 std::vector<Token> Analysis::tokenize(size_t start, size_t end) const {
@@ -285,7 +299,7 @@ std::vector<Diagnostic> Analysis::diagnose() const {
   };
   std::vector<OpenBracket> stack;
 
-  for (const Token& token : lex_.tokens) {
+  for (const Token& token : tokens()) {
     if (diagnostics.size() >= 200) {
       break;
     }
@@ -321,14 +335,14 @@ std::vector<Diagnostic> Analysis::diagnose() const {
                                      std::string("Unclosed '") + open.bracket + "'", "codecore"});
   }
 
-  if (lex_.unterminatedString) {
-    const uint32_t start = std::min<uint32_t>(lex_.unterminatedStringStart,
+  if (tokenSet_->unterminatedString) {
+    const uint32_t start = std::min<uint32_t>(tokenSet_->unterminatedStringStart,
                                               static_cast<uint32_t>(text_.size()));
     diagnostics.push_back(Diagnostic{start, static_cast<uint32_t>(text_.size()), 1,
                                      "Unterminated string literal", "codecore"});
   }
-  if (lex_.unterminatedBlockComment) {
-    const uint32_t start = std::min<uint32_t>(lex_.unterminatedBlockStart,
+  if (tokenSet_->unterminatedBlockComment) {
+    const uint32_t start = std::min<uint32_t>(tokenSet_->unterminatedBlockStart,
                                               static_cast<uint32_t>(text_.size()));
     diagnostics.push_back(Diagnostic{start, static_cast<uint32_t>(text_.size()), 1,
                                      "Unterminated block comment", "codecore"});

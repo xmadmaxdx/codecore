@@ -13,6 +13,7 @@
 #include "core/document/line_index.h"
 #include "core/document/types.h"
 #include "core/language/language.h"
+#include "core/language/token_cache.h"
 #include "core/snapshot/snapshot.h"
 #include "core/syntax/syntax.h"
 #include "core/text_buffer/text_buffer.h"
@@ -159,6 +160,7 @@ class Document {
   mutable std::string textCache_;
   mutable bool textDirty_ = false;
   LineIndex lineIndex_;
+  mutable std::shared_ptr<TokenCache> tokenCache_;
   mutable std::shared_ptr<Analysis> analysis_;
   mutable uint64_t analysisVersion_ = 0;
   mutable int32_t analysisLanguageId_ = -1;

@@ -239,18 +239,33 @@ LexResult lexMarkup(const std::string& text, const Language& language) {
 
 }  // namespace
 
-LexResult lex(const std::string& text, const Language& language) {
-  if (language.markup) {
-    return lexMarkup(text, language);
-  }
+namespace {
 
+/*
+ * Lexes [start, stop) and never stops in the middle of a token: the loop only
+ * checks the limit at a token boundary, so a token that begins before `stop`
+ * finishes normally. `start` must be a token boundary in `text`; callers get
+ * those offsets from TokenCache's safe-start table.
+ */
+LexResult lexStandard(const std::string& text, const Language& language, size_t start,
+                      size_t stop, int32_t braceDepth, size_t* outEnd,
+                      int32_t* outDepth) {
   LexResult result;
   const size_t size = text.size();
-  size_t index = 0;
-  int braceDepth = 0;
+  size_t index = start;
   bool inBlockComment = false;
 
+  if (outEnd) {
+    *outEnd = start;
+  }
+  if (outDepth) {
+    *outDepth = braceDepth;
+  }
+
   while (index < size) {
+    if (index >= stop) {
+      break;
+    }
     if (inBlockComment) {
       const size_t found = language.blockCommentEnd.empty()
                                ? std::string::npos
@@ -259,6 +274,7 @@ LexResult lex(const std::string& text, const Language& language) {
         emit(result, index, size, TokenKind::Comment);
         result.unterminatedBlockComment = true;
         result.unterminatedBlockStart = static_cast<uint32_t>(index);
+        index = size;
         break;
       }
       emit(result, index, found + language.blockCommentEnd.size(), TokenKind::Comment);
@@ -275,6 +291,7 @@ LexResult lex(const std::string& text, const Language& language) {
         emit(result, index, size, TokenKind::Comment);
         result.unterminatedBlockComment = true;
         result.unterminatedBlockStart = static_cast<uint32_t>(index);
+        index = size;
         break;
       }
       emit(result, index, found + language.blockCommentEnd.size(), TokenKind::Comment);
@@ -419,7 +436,45 @@ LexResult lex(const std::string& text, const Language& language) {
     ++index;
   }
 
+  if (outEnd) {
+    *outEnd = index;
+  }
+  if (outDepth) {
+    *outDepth = braceDepth;
+  }
   return result;
+}
+
+}  // namespace
+
+LexResult lex(const std::string& text, const Language& language) {
+  if (language.markup) {
+    return lexMarkup(text, language);
+  }
+  return lexStandard(text, language, 0, text.size(), 0, nullptr, nullptr);
+}
+
+LexResult lexFrom(const std::string& text, const Language& language, size_t start,
+                  size_t stop, int32_t braceDepth, size_t* outEnd, int32_t* outDepth) {
+  if (start > text.size()) {
+    start = text.size();
+  }
+  if (stop < start) {
+    stop = start;
+  }
+  if (stop > text.size()) {
+    stop = text.size();
+  }
+  if (language.markup) {
+    if (outEnd) {
+      *outEnd = start;
+    }
+    if (outDepth) {
+      *outDepth = braceDepth;
+    }
+    return LexResult{};
+  }
+  return lexStandard(text, language, start, stop, braceDepth, outEnd, outDepth);
 }
 
 }  // namespace codecore

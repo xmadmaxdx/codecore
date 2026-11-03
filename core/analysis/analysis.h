@@ -11,6 +11,7 @@
 #include "core/document/line_index.h"
 #include "core/document/types.h"
 #include "core/language/language.h"
+#include "core/language/token_cache.h"
 
 namespace codecore {
 
@@ -24,7 +25,12 @@ namespace codecore {
  */
 class Analysis {
  public:
-  Analysis(std::string text, std::shared_ptr<const Language> language);
+  /*
+   * `cache` is optional. When supplied, tokens come from the document's
+   * incremental token cache instead of a full lex of this version.
+   */
+  Analysis(std::string text, std::shared_ptr<const Language> language,
+           std::shared_ptr<TokenCache> cache = nullptr);
 
   const std::string& text() const { return text_; }
   int32_t languageId() const;
@@ -43,12 +49,13 @@ class Analysis {
   const std::vector<Token>& tokens() const;
 
   std::string text_;
+  std::shared_ptr<TokenCache> cache_;
   std::shared_ptr<const Language> language_;
   LineIndex lineIndex_;
 
   mutable std::mutex mutex_;
   mutable bool lexed_ = false;
-  mutable LexResult lex_;
+  mutable std::shared_ptr<const TokenSet> tokenSet_;
   mutable bool diagnosticsReady_ = false;
   mutable std::vector<Diagnostic> diagnostics_;
   mutable bool foldingReady_ = false;

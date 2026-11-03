@@ -17,6 +17,7 @@ set(CODECORE_CORE_SOURCES
   core/text_buffer/text_buffer.cpp
   core/language/language_registry.cpp
   core/language/lexer.cpp
+  core/language/token_cache.cpp
   core/document/line_index.cpp
   core/document/document.cpp
   core/syntax/syntax.cpp
@@ -173,6 +174,20 @@ if(CODECORE_BUILD_TESTS)
     target_compile_options(codecore_lsp_tests PRIVATE -Wall -Wextra)
   endif()
   add_test(NAME codecore_lsp COMMAND codecore_lsp_tests)
+
+  add_executable(codecore_incremental_tests
+    tests/core/test_incremental.cpp
+  )
+  target_link_libraries(codecore_incremental_tests PRIVATE codecore)
+  target_include_directories(codecore_incremental_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/include)
+  if(MSVC)
+    target_compile_options(codecore_incremental_tests PRIVATE /W4)
+  else()
+    target_compile_options(codecore_incremental_tests PRIVATE -Wall -Wextra)
+  endif()
+  add_test(NAME codecore_incremental COMMAND codecore_incremental_tests)
 
   add_executable(codecore_exec_helper
     tests/core/exec_helper.cpp

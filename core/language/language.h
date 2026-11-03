@@ -69,6 +69,18 @@ struct Language {
 /* Tokenizes a complete document. Offsets are byte offsets into `text`. */
 LexResult lex(const std::string& text, const Language& language);
 
+/*
+ * Resumable lexing for incremental tokenization.
+ *
+ * Lexes [start, stop) starting at a token boundary with a known brace depth,
+ * and stops at the first token boundary at or after `stop` (or at end of
+ * text). `outEnd` receives the offset where lexing stopped, which may be past
+ * `stop` when the last token ran long. Markup languages (HTML/XML) are not
+ * resumable: they return an empty result and `outEnd == start`.
+ */
+LexResult lexFrom(const std::string& text, const Language& language, size_t start,
+                  size_t stop, int32_t braceDepth, size_t* outEnd, int32_t* outDepth);
+
 class LanguageRegistry {
  public:
   LanguageRegistry();

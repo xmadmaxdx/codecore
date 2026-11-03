@@ -134,7 +134,10 @@ const std::string& Document::currentText() const {
 std::shared_ptr<Analysis> Document::currentAnalysis() const {
   const int32_t languageId = language_ ? language_->id : -1;
   if (!analysis_ || analysisVersion_ != version_ || analysisLanguageId_ != languageId) {
-    analysis_ = std::make_shared<Analysis>(currentText(), language_);
+    if (!tokenCache_) {
+      tokenCache_ = std::make_shared<TokenCache>();
+    }
+    analysis_ = std::make_shared<Analysis>(currentText(), language_, tokenCache_);
     analysisVersion_ = version_;
     analysisLanguageId_ = languageId;
   }
@@ -197,6 +200,9 @@ Status Document::setLanguage(std::shared_ptr<const Language> language) {
   }
   language_ = std::move(language);
   options_.languageId = language_->id;
+  if (tokenCache_) {
+    tokenCache_->clear();
+  }
   analysis_.reset();
   syntaxTree_.reset();
   syntaxVersion_ = 0;
